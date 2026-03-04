@@ -515,6 +515,19 @@ main {
     margin-bottom: 1rem;
 }
 
+.ungrouped-info {
+    padding: 1rem;
+    background: #2a2a2a;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    border-left: 4px solid #FF9800;
+}
+
+.ungrouped-info p {
+    color: #FF9800;
+    font-style: italic;
+}
+
 .similarity-item {
     padding: 0.75rem;
     margin: 0.5rem 0;

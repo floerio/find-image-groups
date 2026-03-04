@@ -1,9 +1,11 @@
 // Find Image Groups - Client-side JavaScript
 
 let clusters = [];
+let ungroupedImages = [];
 let currentCluster = 0;
 let availableColors = [];
 let focusedImageIndex = 0;
+let showUngrouped = false;
 
 // Lightbox state
 let lightboxOpen = false;
@@ -29,20 +31,24 @@ const nextBtn = document.getElementById('nextBtn');
 // Initialize
 async function init() {
     try {
-        // Load colors and clusters in parallel
-        const [colorsResponse, clustersResponse] = await Promise.all([
+        // Load colors, clusters, and ungrouped images in parallel
+        const [colorsResponse, clustersResponse, ungroupedResponse] = await Promise.all([
             fetch('/api/colors'),
-            fetch('/api/clusters')
+            fetch('/api/clusters'),
+            fetch('/api/ungrouped')
         ]);
 
-        if (!colorsResponse.ok || !clustersResponse.ok) {
+        if (!colorsResponse.ok || !clustersResponse.ok || !ungroupedResponse.ok) {
             throw new Error('Failed to load data');
         }
 
         availableColors = await colorsResponse.json();
         clusters = await clustersResponse.json();
+        ungroupedImages = await ungroupedResponse.json();
 
-        if (clusters.length === 0) {
+        showUngrouped = ungroupedImages.length > 0;
+
+        if (clusters.length === 0 && !showUngrouped) {
             showError();
             return;
         }
@@ -68,6 +74,12 @@ function showError() {
 
 // Display a cluster
 function showCluster(index) {
+    // Handle ungrouped images as a special "cluster"
+    if (showUngrouped && index >= clusters.length) {
+        showUngroupedImages();
+        return;
+    }
+
     // Wrap around
     currentCluster = ((index % clusters.length) + clusters.length) % clusters.length;
 
@@ -161,6 +173,80 @@ function showCluster(index) {
     updateButtons();
 }
 
+// Display ungrouped images
+function showUngroupedImages() {
+    currentCluster = clusters.length; // Special index for ungrouped
+    
+    // Update header info
+    groupInfo.textContent = `Ungrouped Images (${ungroupedImages.length} images)`;
+
+    // Clear previous content
+    imageGrid.innerHTML = '';
+    similarityList.innerHTML = '';
+
+    // Add info message
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'ungrouped-info';
+    infoDiv.innerHTML = '<p>These images have no similar counterparts based on the current threshold.</p>';
+    similarityList.appendChild(infoDiv);
+
+    // Reset focused image
+    focusedImageIndex = 0;
+
+    // Create image cards
+    ungroupedImages.forEach((image, idx) => {
+        const card = document.createElement('div');
+        card.className = 'image-card';
+        card.dataset.imageIndex = idx;
+
+        // Set initial focus
+        if (idx === 0) {
+            card.classList.add('focused');
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper';
+        wrapper.style.cursor = 'pointer';
+        wrapper.title = 'Click to zoom';
+
+        // Click to open lightbox
+        wrapper.addEventListener('click', () => {
+            openLightbox(idx);
+        });
+
+        const img = document.createElement('img');
+        img.className = 'loading';
+        img.alt = image.filename;
+        img.src = `/api/ungrouped/${idx}`;
+
+        img.onload = () => {
+            img.classList.remove('loading');
+        };
+
+        img.onerror = () => {
+            img.alt = 'Failed to load';
+            img.classList.remove('loading');
+        };
+
+        wrapper.appendChild(img);
+
+        const filename = document.createElement('div');
+        filename.className = 'image-filename';
+        filename.textContent = image.filename;
+
+        // Create color picker
+        const colorPicker = createColorPicker(image, idx);
+
+        card.appendChild(wrapper);
+        card.appendChild(filename);
+        card.appendChild(colorPicker);
+        imageGrid.appendChild(card);
+    });
+
+    // Update button states
+    updateButtons();
+}
+
 // Create color picker for an image
 function createColorPicker(image, imageIdx) {
     const picker = document.createElement('div');
@@ -197,13 +283,26 @@ function createColorPicker(image, imageIdx) {
 // Set color for an image
 async function setImageColor(imageIdx, color, pickerElement) {
     try {
-        const response = await fetch(`/api/color/${currentCluster}/${imageIdx}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ color })
-        });
+        let response;
+        const isUngrouped = currentCluster >= clusters.length;
+        
+        if (isUngrouped) {
+            response = await fetch(`/api/ungrouped/color/${imageIdx}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ color })
+            });
+        } else {
+            response = await fetch(`/api/color/${currentCluster}/${imageIdx}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ color })
+            });
+        }
 
         if (!response.ok) {
             throw new Error('Failed to set color');
@@ -221,8 +320,12 @@ async function setImageColor(imageIdx, color, pickerElement) {
             }
         });
 
-        // Update cluster data
-        clusters[currentCluster].images[imageIdx].color = color === 'None' ? null : color;
+        // Update data
+        if (isUngrouped) {
+            ungroupedImages[imageIdx].color = color === 'None' ? null : color;
+        } else {
+            clusters[currentCluster].images[imageIdx].color = color === 'None' ? null : color;
+        }
 
     } catch (error) {
         console.error('Error setting color:', error);
@@ -238,21 +341,42 @@ function updateButtons() {
 
 // Navigate to next cluster
 function nextCluster() {
-    showCluster(currentCluster + 1);
+    const totalGroups = getTotalGroups();
+    const nextIndex = currentCluster + 1;
+    if (nextIndex >= totalGroups) {
+        showCluster(0); // Wrap around to first group
+    } else {
+        showCluster(nextIndex);
+    }
 }
 
 // Navigate to previous cluster
 function prevCluster() {
-    showCluster(currentCluster - 1);
+    const totalGroups = getTotalGroups();
+    const prevIndex = currentCluster - 1;
+    if (prevIndex < 0) {
+        showCluster(totalGroups - 1); // Wrap around to last group
+    } else {
+        showCluster(prevIndex);
+    }
+}
+
+// Get total number of groups including ungrouped
+function getTotalGroups() {
+    let total = clusters.length;
+    if (showUngrouped && ungroupedImages.length > 0) {
+        total += 1;
+    }
+    return total;
 }
 
 // Set focus to an image
 function focusImage(index) {
-    const cluster = clusters[currentCluster];
-    if (!cluster) return;
+    const isUngrouped = currentCluster >= clusters.length;
+    const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
 
     // Wrap around
-    focusedImageIndex = ((index % cluster.images.length) + cluster.images.length) % cluster.images.length;
+    focusedImageIndex = ((index % totalImages) + totalImages) % totalImages;
 
     // Update UI
     const cards = document.querySelectorAll('.image-card');
@@ -271,8 +395,12 @@ async function tagFocusedImage(colorIndex) {
     if (colorIndex < 0 || colorIndex >= availableColors.length) return;
 
     const color = availableColors[colorIndex];
-    const cluster = clusters[currentCluster];
-    if (!cluster) return;
+    const isUngrouped = currentCluster >= clusters.length;
+    
+    if (!isUngrouped) {
+        const cluster = clusters[currentCluster];
+        if (!cluster) return;
+    }
 
     const card = document.querySelector(`.image-card[data-image-index="${focusedImageIndex}"]`);
     if (!card) return;
@@ -437,9 +565,6 @@ function setupEventListeners() {
 
 // Lightbox functions
 function openLightbox(imageIndex) {
-    const cluster = clusters[currentCluster];
-    if (!cluster) return;
-
     lightboxOpen = true;
     lightboxImageIndex = imageIndex;
     zoomLevel = 1;
@@ -461,10 +586,17 @@ function closeLightbox() {
 }
 
 async function showLightboxImage() {
-    const cluster = clusters[currentCluster];
-    if (!cluster) return;
+    let image, cluster;
+    const isUngrouped = currentCluster >= clusters.length;
+    
+    if (isUngrouped) {
+        image = ungroupedImages[lightboxImageIndex];
+    } else {
+        cluster = clusters[currentCluster];
+        if (!cluster) return;
+        image = cluster.images[lightboxImageIndex];
+    }
 
-    const image = cluster.images[lightboxImageIndex];
     const lightboxImg = document.getElementById('lightboxImage');
     const filenameElem = document.querySelector('.lightbox-filename');
     const imageNumElem = document.getElementById('lightboxImageNum');
@@ -473,7 +605,11 @@ async function showLightboxImage() {
     const exifElemFooter = document.getElementById('lightboxExif');
 
     // Update image
-    lightboxImg.src = `/api/image/${currentCluster}/${lightboxImageIndex}`;
+    if (isUngrouped) {
+        lightboxImg.src = `/api/ungrouped/${lightboxImageIndex}`;
+    } else {
+        lightboxImg.src = `/api/image/${currentCluster}/${lightboxImageIndex}`;
+    }
     lightboxImg.style.transform = `scale(${zoomLevel}) translate(${panOffsetX}px, ${panOffsetY}px)`;
     lightboxImg.style.filter = `brightness(${brightnessLevel}%)`;
 
@@ -481,7 +617,8 @@ async function showLightboxImage() {
     filenameElem.textContent = image.filename;
 
     // Update image number
-    imageNumElem.textContent = `${lightboxImageIndex + 1} of ${cluster.images.length}`;
+    const totalImages = isUngrouped ? ungroupedImages.length : cluster.images.length;
+    imageNumElem.textContent = `${lightboxImageIndex + 1} of ${totalImages}`;
 
     // Update zoom level display
     document.querySelector('.lightbox-zoom-level').textContent = `${Math.round(zoomLevel * 100)}%`;
@@ -498,13 +635,19 @@ async function showLightboxImage() {
 
     // Load and display EXIF data
     try {
-        const response = await fetch(`/api/exif/${currentCluster}/${lightboxImageIndex}`);
-        if (response.ok) {
-            const exif = await response.json();
+        let exifResponse;
+        if (isUngrouped) {
+            exifResponse = await fetch(`/api/ungrouped/exif/${lightboxImageIndex}`);
+        } else {
+            exifResponse = await fetch(`/api/exif/${currentCluster}/${lightboxImageIndex}`);
+        }
+        
+        if (exifResponse.ok) {
+            const exif = await exifResponse.json();
             console.log('EXIF data received:', exif); // Debug logging
             displayExifData(exif, exifElemHeader, exifElemFooter);
         } else {
-            console.error('EXIF request failed:', response.status);
+            console.error('EXIF request failed:', exifResponse.status);
             exifElemHeader.innerHTML = '<span style="color: #888;">No EXIF data available</span>';
         }
     } catch (error) {
@@ -581,10 +724,10 @@ function setBrightness(newBrightness) {
 }
 
 function lightboxPrevImage() {
-    const cluster = clusters[currentCluster];
-    if (!cluster) return;
+    const isUngrouped = currentCluster >= clusters.length;
+    const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
 
-    lightboxImageIndex = (lightboxImageIndex - 1 + cluster.images.length) % cluster.images.length;
+    lightboxImageIndex = (lightboxImageIndex - 1 + totalImages) % totalImages;
     zoomLevel = 1;
     brightnessLevel = 100;
     panOffsetX = 0;
@@ -593,10 +736,10 @@ function lightboxPrevImage() {
 }
 
 function lightboxNextImage() {
-    const cluster = clusters[currentCluster];
-    if (!cluster) return;
+    const isUngrouped = currentCluster >= clusters.length;
+    const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
 
-    lightboxImageIndex = (lightboxImageIndex + 1) % cluster.images.length;
+    lightboxImageIndex = (lightboxImageIndex + 1) % totalImages;
     zoomLevel = 1;
     brightnessLevel = 100;
     panOffsetX = 0;

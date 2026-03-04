@@ -82,6 +82,7 @@ Both viewers display images in each group side-by-side and support keyboard navi
 - `-p, --port` - Port for web viewer (default: 5000).
 - `--no-cache` - Disable hash caching (recompute all hashes).
 - `--no-parallel` - Disable parallel processing (slower but uses less memory).
+- `--show-ungrouped` - Show images that are not part of any similar group.
 
 ## How It Works
 
@@ -102,6 +103,7 @@ Both viewers display images in each group side-by-side and support keyboard navi
 - Finding bracketed exposures with EXIF confirmation
 - **Organizing images for import into Capture One with pre-applied color tags**
 - **Compare exposure/focus differences by zooming into similar images**
+- **Reviewing ungrouped images to find unique shots that don't have similar counterparts**
 
 ## Example Output
 
@@ -155,11 +157,12 @@ Group 2: 2 similar image(s)
 - **Lightbox zoom viewer for detailed inspection**
 - **Color tagging for Capture One integration**
 - Detailed similarity information
+- **Ungrouped images section** - View images that don't have similar counterparts
 - Works in any modern browser
 
 **Navigation:**
-- `→` or `D` or `N` - Next group
-- `←` or `A` or `P` - Previous group
+- `→` or `D` or `N` - Next group (cycles through all groups including ungrouped)
+- `←` or `A` or `P` - Previous group (cycles through all groups including ungrouped)
 - `Q` or `ESC` - Close window
 - Click navigation buttons
 
@@ -198,6 +201,11 @@ Group 2: 2 similar image(s)
 python fuji_similarity.py /path/to/photos --web-viewer
 ```
 
+**With ungrouped images:**
+```bash
+python fuji_similarity.py /path/to/photos --web-viewer --show-ungrouped
+```
+
 Opens `http://localhost:5000` in your browser automatically.
 
 ### Matplotlib Viewer (Offline Alternative)
@@ -205,13 +213,18 @@ Opens `http://localhost:5000` in your browser automatically.
 A desktop viewer using matplotlib. Works without internet/browser but with simpler UI.
 
 **Controls:**
-- `→` or `N` - Next group
-- `←` or `P` - Previous group
+- `→` or `N` - Next group (cycles through all groups including ungrouped)
+- `←` or `P` - Previous group (cycles through all groups including ungrouped)
 - `Q` or `ESC` - Quit
 
 **Usage:**
 ```bash
 python fuji_similarity.py /path/to/photos --viewer
+```
+
+**With ungrouped images:**
+```bash
+python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
 ```
 
 ## Requirements
@@ -224,6 +237,38 @@ python fuji_similarity.py /path/to/photos --viewer
 - tqdm (progress bars)
 - flask (web server for hybrid viewer)
 - matplotlib (offline matplotlib viewer)
+
+## Ungrouped Images Feature
+
+**What are ungrouped images?**
+- Images that don't have any similar counterparts based on the current threshold
+- Unique shots that don't match any other images in your collection
+- Often the most distinctive or creative images from your session
+
+**Why view ungrouped images?**
+- **Find hidden gems**: Discover unique shots that might be your best work
+- **Complete review**: Ensure no image is overlooked in your workflow
+- **Quality control**: Check if these images are truly unique or just failed to match
+- **Creative insights**: See which compositions stand out as completely different
+
+**How to use:**
+- Add `--show-ungrouped` flag to any viewer command
+- Ungrouped images appear as an additional "group" at the end
+- Navigation cycles through all groups including ungrouped
+- Full functionality: zoom, color tagging, EXIF data, etc.
+- Console output shows list of ungrouped filenames
+
+**Example:**
+```bash
+# Console output with ungrouped images
+python fuji_similarity.py /path/to/photos --show-ungrouped
+
+# Web viewer with ungrouped images
+python fuji_similarity.py /path/to/photos --web-viewer --show-ungrouped
+
+# Matplotlib viewer with ungrouped images  
+python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
+```
 
 ## Performance Features
 

@@ -341,6 +341,32 @@ class ImageSimilarityFinder:
 
         return clusters
 
+    def find_ungrouped_images(self, clusters: List[Dict]) -> List[str]:
+        """
+        Find images that are not part of any cluster.
+
+        Args:
+            clusters: List of cluster dictionaries
+
+        Returns:
+            List of image paths that are not in any cluster
+        """
+        if not self.image_hashes:
+            return []
+
+        # Get all images that are in clusters
+        clustered_images = set()
+        for cluster in clusters:
+            clustered_images.update(cluster['images'])
+
+        # Find images that are not in any cluster
+        ungrouped_images = []
+        for image_path in self.image_hashes.keys():
+            if image_path not in clustered_images:
+                ungrouped_images.append(image_path)
+
+        return sorted(ungrouped_images)
+
     def print_results(self, similar_pairs: List[Tuple[str, str, int]]) -> None:
         """
         Print the results of similarity comparison.
@@ -406,16 +432,21 @@ class ImageSimilarityFinder:
 class ClusterViewer:
     """Interactive viewer for browsing clustered similar images."""
 
-    def __init__(self, clusters: List[Dict], finder: ImageSimilarityFinder):
+    def __init__(self, clusters: List[Dict], finder: ImageSimilarityFinder, show_ungrouped: bool = False):
         """
         Initialize the viewer.
 
         Args:
             clusters: List of cluster dictionaries
             finder: ImageSimilarityFinder instance (for loading images)
+            show_ungrouped: Whether to show ungrouped images
         """
         self.clusters = clusters
         self.finder = finder
+        self.show_ungrouped = show_ungrouped
+        self.ungrouped_images = []
+        if show_ungrouped:
+            self.ungrouped_images = finder.find_ungrouped_images(clusters)
         self.current_cluster = 0
         self.fig = None
         self.loaded_images = {}  # Cache for loaded images
@@ -443,6 +474,11 @@ class ClusterViewer:
         """
         if not self.clusters:
             print("No clusters to display")
+            return
+
+        # Handle ungrouped images as a special "cluster"
+        if self.show_ungrouped and cluster_idx >= len(self.clusters):
+            self.show_ungrouped_images()
             return
 
         # Wrap around
@@ -509,6 +545,61 @@ class ClusterViewer:
         plt.tight_layout(rect=[0, 0.1, 1, 0.95])
         plt.draw()
 
+    def show_ungrouped_images(self) -> None:
+        """Display ungrouped images."""
+        if not self.ungrouped_images:
+            print("No ungrouped images to display")
+            return
+
+        # Clear the figure
+        if self.fig is not None:
+            plt.clf()
+        else:
+            self.fig = plt.figure(figsize=(16, 10))
+
+        images = self.ungrouped_images
+        n_images = len(images)
+        n_cols = min(3, n_images)
+        n_rows = (n_images + n_cols - 1) // n_cols
+
+        # Set up the figure title
+        self.fig.suptitle(
+            f'Ungrouped Images - {n_images} images not in any similar group\n'
+            f'Use ← → to navigate, Q to quit',
+            fontsize=14,
+            fontweight='bold'
+        )
+
+        # Create subplots for images
+        for idx, img_path in enumerate(images):
+            ax = self.fig.add_subplot(n_rows, n_cols, idx + 1)
+
+            try:
+                # Load image
+                img = self.load_image_cached(img_path)
+
+                # Display image
+                ax.imshow(np.array(img))
+                ax.axis('off')
+
+                # Add filename as title
+                filename = Path(img_path).name
+                ax.set_title(filename, fontsize=10, pad=5)
+
+            except Exception as e:
+                ax.text(0.5, 0.5, f'Error loading\n{Path(img_path).name}',
+                       ha='center', va='center', transform=ax.transAxes)
+                ax.axis('off')
+
+        # Add info text at the bottom
+        info_text = "These images have no similar counterparts based on the current threshold."
+        self.fig.text(0.02, 0.02, info_text, fontsize=9,
+                     verticalalignment='bottom', fontfamily='monospace',
+                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
+        plt.draw()
+
     def on_key(self, event) -> None:
         """
         Handle keyboard events for navigation.
@@ -518,10 +609,18 @@ class ClusterViewer:
         """
         if event.key == 'right' or event.key == 'n':
             # Next cluster
-            self.show_cluster(self.current_cluster + 1)
+            total_groups = self.get_total_groups()
+            next_cluster = self.current_cluster + 1
+            if next_cluster >= total_groups:
+                next_cluster = 0
+            self.show_cluster(next_cluster)
         elif event.key == 'left' or event.key == 'p':
             # Previous cluster
-            self.show_cluster(self.current_cluster - 1)
+            total_groups = self.get_total_groups()
+            prev_cluster = self.current_cluster - 1
+            if prev_cluster < 0:
+                prev_cluster = total_groups - 1
+            self.show_cluster(prev_cluster)
         elif event.key == 'q' or event.key == 'escape':
             # Quit
             plt.close(self.fig)
@@ -552,6 +651,13 @@ class ClusterViewer:
 
         # Clear cache after viewer closes
         self.loaded_images.clear()
+
+    def get_total_groups(self) -> int:
+        """Get total number of groups including ungrouped images."""
+        total = len(self.clusters)
+        if self.show_ungrouped and self.ungrouped_images:
+            total += 1
+        return total
 
 
 def main():
@@ -623,6 +729,12 @@ Examples:
         help="Disable parallel processing (slower but uses less memory)"
     )
 
+    parser.add_argument(
+        "--show-ungrouped",
+        action="store_true",
+        help="Show images that are not part of any similar group"
+    )
+
     args = parser.parse_args()
 
     # Validate directory
@@ -655,12 +767,26 @@ Examples:
         clusters = finder.cluster_similar_images(similar_pairs)
         finder.print_clustered_results(clusters)
 
+        # Show ungrouped images if requested
+        if args.show_ungrouped:
+            ungrouped_images = finder.find_ungrouped_images(clusters)
+            if ungrouped_images:
+                print(f"\n{'='*80}")
+                print(f"Ungrouped Images ({len(ungrouped_images)} images not in any similar group):")
+                print(f"{'='*80}")
+                for i, img_path in enumerate(ungrouped_images, 1):
+                    print(f"{i}. {Path(img_path).name}")
+            else:
+                print(f"\n{'='*80}")
+                print("No ungrouped images found (all images are in similar groups)")
+                print(f"{'='*80}")
+
         # Launch viewer if requested
         if args.web_viewer and clusters:
-            web_viewer = WebViewer(clusters, finder, port=args.port)
+            web_viewer = WebViewer(clusters, finder, port=args.port, show_ungrouped=args.show_ungrouped)
             web_viewer.run()
         elif args.viewer and clusters:
-            viewer = ClusterViewer(clusters, finder)
+            viewer = ClusterViewer(clusters, finder, show_ungrouped=args.show_ungrouped)
             viewer.run()
 
 

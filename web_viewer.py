@@ -26,7 +26,7 @@ class WebViewer:
     # Capture One color labels
     COLORS = ["None", "Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink"]
 
-    def __init__(self, clusters: List[Dict], finder, port: int = 5000):
+    def __init__(self, clusters: List[Dict], finder, port: int = 5000, show_ungrouped: bool = False):
         """
         Initialize the web viewer.
 
@@ -34,10 +34,15 @@ class WebViewer:
             clusters: List of cluster dictionaries
             finder: ImageSimilarityFinder instance
             port: Port to run the web server on
+            show_ungrouped: Whether to show ungrouped images
         """
         self.clusters = clusters
         self.finder = finder
         self.port = port
+        self.show_ungrouped = show_ungrouped
+        self.ungrouped_images = []
+        if show_ungrouped:
+            self.ungrouped_images = finder.find_ungrouped_images(clusters)
         self.app = Flask(__name__)
         self.image_cache = {}
         self._setup_routes()
@@ -280,6 +285,106 @@ class WebViewer:
                 }
                 clusters_data.append(cluster_info)
             return jsonify(clusters_data)
+
+        @self.app.route('/api/ungrouped')
+        def get_ungrouped():
+            """Return ungrouped images metadata."""
+            if not self.show_ungrouped:
+                return jsonify([])
+            
+            ungrouped_data = []
+            for i, img_path in enumerate(self.ungrouped_images):
+                ungrouped_data.append({
+                    'id': i,
+                    'path': img_path,
+                    'filename': Path(img_path).name,
+                    'color': self.read_color_tag(img_path)
+                })
+            return jsonify(ungrouped_data)
+
+        @self.app.route('/api/ungrouped/<int:image_id>')
+        def get_ungrouped_image(image_id):
+            """Serve an ungrouped image as JPEG."""
+            if not self.show_ungrouped:
+                return "Ungrouped images not enabled", 404
+            
+            if image_id >= len(self.ungrouped_images):
+                return "Image not found", 404
+            
+            image_path = self.ungrouped_images[image_id]
+            
+            # Check cache
+            cache_key = f"ungrouped_{image_id}"
+            if cache_key in self.image_cache:
+                return send_file(
+                    BytesIO(self.image_cache[cache_key]),
+                    mimetype='image/jpeg'
+                )
+            
+            try:
+                # Load and process RAW file
+                img = self.finder.load_raw_file(Path(image_path))
+                
+                # Resize for web display (max 1920px wide)
+                max_width = 1920
+                if img.width > max_width:
+                    ratio = max_width / img.width
+                    new_size = (max_width, int(img.height * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                
+                # Convert to JPEG
+                buffer = BytesIO()
+                img.save(buffer, format='JPEG', quality=85, optimize=True)
+                jpeg_data = buffer.getvalue()
+                
+                # Cache it
+                self.image_cache[cache_key] = jpeg_data
+                
+                return send_file(
+                    BytesIO(jpeg_data),
+                    mimetype='image/jpeg'
+                )
+            
+            except Exception as e:
+                print(f"Error loading ungrouped image: {e}")
+                return f"Error loading image: {e}", 500
+
+        @self.app.route('/api/ungrouped/exif/<int:image_id>')
+        def get_ungrouped_exif(image_id):
+            """Get EXIF data for an ungrouped image."""
+            if not self.show_ungrouped:
+                return jsonify({'error': 'Ungrouped images not enabled'}), 404
+            
+            if image_id >= len(self.ungrouped_images):
+                return jsonify({'error': 'Image not found'}), 404
+            
+            image_path = self.ungrouped_images[image_id]
+            exif_data = self.get_exif_data(image_path)
+            
+            return jsonify(exif_data)
+
+        @self.app.route('/api/ungrouped/color/<int:image_id>', methods=['POST'])
+        def set_ungrouped_color(image_id):
+            """Set color tag for an ungrouped image."""
+            if not self.show_ungrouped:
+                return jsonify({'error': 'Ungrouped images not enabled'}), 404
+            
+            if image_id >= len(self.ungrouped_images):
+                return jsonify({'error': 'Image not found'}), 404
+            
+            data = request.get_json()
+            color = data.get('color')
+            
+            if color not in self.COLORS:
+                return jsonify({'error': 'Invalid color'}), 400
+            
+            image_path = self.ungrouped_images[image_id]
+            success = self.write_color_tag(image_path, color)
+            
+            if success:
+                return jsonify({'success': True, 'color': color})
+            else:
+                return jsonify({'error': 'Failed to write XMP'}), 500
 
         @self.app.route('/api/colors')
         def get_color_list():
