@@ -166,11 +166,20 @@ Group 2: 2 similar image(s)
 - `Q` or `ESC` - Close window
 - Click navigation buttons
 
+**Grid View Brightness Control:**
+- **Y** - Decrease brightness of all thumbnails
+- **X** - Increase brightness of all thumbnails
+- **Space** - Reset grid brightness to 100%
+- Use on-screen buttons (☀−, ☀+, ☀↻) as alternatives
+- Perfect for adjusting overall brightness before zooming in
+
 **Image Zoom/Inspection:**
 - **Click any image** to open fullscreen lightbox
 - **Mouse wheel** - Zoom in/out
 - **+/-** keys - Zoom in/out
-- **, / .** keys - Decrease/increase brightness (20%-200%)
+- **Y/X** keys - Decrease/increase brightness (20%-200%) - **Works on all keyboards!**
+- **, / .** keys - Alternative brightness control (US layout)
+- **; / :** keys - Alternative brightness control (German layout)
 - **Space** - Reset zoom and brightness to 100%
 - **Click and drag** - Pan when zoomed
 - **Arrow keys** - Navigate between images (or pan when zoomed with Shift/Ctrl)
@@ -289,6 +298,27 @@ python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
 - Web viewer automatically opens in your default browser
 - No need to copy/paste URLs
 - Just run the command and start tagging!
+
+## Keyboard Layout Support
+
+**International Keyboard Support:**
+- **US Keyboard**: Use `,` (comma) and `.` (period) for brightness control
+- **German Keyboard**: Use `;` (semicolon) and `:` (colon) for brightness control
+- **Other Layouts**: Both key sets work simultaneously
+
+**How it works:**
+- **Primary keys**: `Y` (darker) and `X` (brighter) - **Works on ALL keyboard layouts!**
+- **Alternative keys**: `,`/`.` (US) and `;`/`:` (German) for user preference
+- The web viewer detects key presses and handles multiple key mappings
+- No configuration needed - all keys work simultaneously
+
+**Troubleshooting:**
+If brightness control doesn't work, try:
+1. **Use Y/X keys** - These work on all keyboards!
+2. Use the on-screen buttons (☀− and ☀+)
+3. Try alternative keys based on your layout
+4. Check if your browser has keyboard shortcuts that might interfere
+5. Use mouse wheel for zoom, spacebar to reset
 
 ## Architecture Notes
 

@@ -6,6 +6,7 @@ let currentCluster = 0;
 let availableColors = [];
 let focusedImageIndex = 0;
 let showUngrouped = false;
+let gridBrightness = 100; // Global brightness for grid view
 
 // Lightbox state
 let lightboxOpen = false;
@@ -120,6 +121,7 @@ function showCluster(index) {
         img.className = 'loading';
         img.alt = image.filename;
         img.src = `/api/image/${currentCluster}/${idx}`;
+        img.style.filter = `brightness(${gridBrightness}%)`;
 
         img.onload = () => {
             img.classList.remove('loading');
@@ -218,6 +220,7 @@ function showUngroupedImages() {
         img.className = 'loading';
         img.alt = image.filename;
         img.src = `/api/ungrouped/${idx}`;
+        img.style.filter = `brightness(${gridBrightness}%)`;
 
         img.onload = () => {
             img.classList.remove('loading');
@@ -390,6 +393,30 @@ function focusImage(index) {
     });
 }
 
+// Set grid brightness
+function setGridBrightness(newBrightness) {
+    gridBrightness = Math.max(20, Math.min(200, newBrightness));
+    
+    // Update all images in the current view
+    const images = document.querySelectorAll('.image-wrapper img');
+    images.forEach(img => {
+        img.style.filter = `brightness(${gridBrightness}%)`;
+    });
+    
+    // Update brightness display if in grid view
+    if (!lightboxOpen) {
+        const brightnessDisplay = document.getElementById('gridBrightnessDisplay');
+        if (brightnessDisplay) {
+            brightnessDisplay.textContent = `${gridBrightness}%`;
+        }
+    }
+}
+
+// Reset grid brightness
+function resetGridBrightness() {
+    setGridBrightness(100);
+}
+
 // Tag focused image with color
 async function tagFocusedImage(colorIndex) {
     if (colorIndex < 0 || colorIndex >= availableColors.length) return;
@@ -416,6 +443,21 @@ async function tagFocusedImage(colorIndex) {
 function setupEventListeners() {
     prevBtn.addEventListener('click', prevCluster);
     nextBtn.addEventListener('click', nextCluster);
+    
+    // Set up grid brightness button event listeners
+    const brightnessDownBtn = document.getElementById('gridBrightnessDown');
+    const brightnessUpBtn = document.getElementById('gridBrightnessUp');
+    const brightnessResetBtn = document.getElementById('gridBrightnessReset');
+    
+    if (brightnessDownBtn) {
+        brightnessDownBtn.onclick = () => setGridBrightness(gridBrightness - 10);
+    }
+    if (brightnessUpBtn) {
+        brightnessUpBtn.onclick = () => setGridBrightness(gridBrightness + 10);
+    }
+    if (brightnessResetBtn) {
+        brightnessResetBtn.onclick = resetGridBrightness;
+    }
 
     // Keyboard navigation
     document.addEventListener('keydown', (e) => {
@@ -483,13 +525,27 @@ function setupEventListeners() {
                     e.preventDefault();
                     fitToScreen();
                     break;
+                case 'y':
+                case 'Y':
+                    e.preventDefault();
+                    setBrightness(brightnessLevel - 10);
+                    break;
+                case 'x':
+                case 'X':
+                    e.preventDefault();
+                    setBrightness(brightnessLevel + 10);
+                    break;
                 case ',':
                 case '<':
+                case ';':  // German keyboard: Shift + ,
+                case ':':  // German keyboard: Shift + .
                     e.preventDefault();
                     setBrightness(brightnessLevel - 10);
                     break;
                 case '.':
                 case '>':
+                case ':':  // German keyboard: Shift + .
+                case ';':  // German keyboard: Shift + ,
                     e.preventDefault();
                     setBrightness(brightnessLevel + 10);
                     break;
@@ -546,6 +602,20 @@ function setupEventListeners() {
                 } else {
                     focusImage(focusedImageIndex + 1);
                 }
+                break;
+            case 'y':
+            case 'Y':
+                e.preventDefault();
+                setGridBrightness(gridBrightness - 10);
+                break;
+            case 'x':
+            case 'X':
+                e.preventDefault();
+                setGridBrightness(gridBrightness + 10);
+                break;
+            case ' ':
+                e.preventDefault();
+                resetGridBrightness();
                 break;
             case '1':
             case '2':
