@@ -168,6 +168,90 @@ main {
     border-top: 1px solid #404040;
 }
 
+.color-picker {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #404040;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.color-picker-label {
+    font-size: 0.85rem;
+    color: #888;
+    margin-right: 0.25rem;
+}
+
+.color-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid #404040;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.color-btn:hover {
+    transform: scale(1.15);
+    border-color: #4CAF50;
+}
+
+.color-btn.selected {
+    border-color: #4CAF50;
+    border-width: 3px;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+}
+
+.color-btn.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Color definitions */
+.color-btn[data-color="None"] {
+    background: #333;
+    background-image: linear-gradient(45deg, #333 25%, #555 25%, #555 50%, #333 50%, #333 75%, #555 75%, #555);
+    background-size: 8px 8px;
+}
+
+.color-btn[data-color="Red"] {
+    background: #e53935;
+}
+
+.color-btn[data-color="Orange"] {
+    background: #fb8c00;
+}
+
+.color-btn[data-color="Yellow"] {
+    background: #fdd835;
+}
+
+.color-btn[data-color="Green"] {
+    background: #43a047;
+}
+
+.color-btn[data-color="Blue"] {
+    background: #1e88e5;
+}
+
+.color-btn[data-color="Purple"] {
+    background: #8e24aa;
+}
+
+.color-btn[data-color="Pink"] {
+    background: #d81b60;
+}
+
 .similarities {
     background: #2d2d2d;
     padding: 1.5rem;

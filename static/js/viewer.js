@@ -2,6 +2,7 @@
 
 let clusters = [];
 let currentCluster = 0;
+let availableColors = [];
 
 // DOM elements
 const loading = document.getElementById('loading');
@@ -16,12 +17,18 @@ const nextBtn = document.getElementById('nextBtn');
 // Initialize
 async function init() {
     try {
-        const response = await fetch('/api/clusters');
-        if (!response.ok) {
-            throw new Error('Failed to load clusters');
+        // Load colors and clusters in parallel
+        const [colorsResponse, clustersResponse] = await Promise.all([
+            fetch('/api/colors'),
+            fetch('/api/clusters')
+        ]);
+
+        if (!colorsResponse.ok || !clustersResponse.ok) {
+            throw new Error('Failed to load data');
         }
 
-        clusters = await response.json();
+        availableColors = await colorsResponse.json();
+        clusters = await clustersResponse.json();
 
         if (clusters.length === 0) {
             showError();
@@ -89,8 +96,12 @@ function showCluster(index) {
         filename.className = 'image-filename';
         filename.textContent = image.filename;
 
+        // Create color picker
+        const colorPicker = createColorPicker(image, idx);
+
         card.appendChild(wrapper);
         card.appendChild(filename);
+        card.appendChild(colorPicker);
         imageGrid.appendChild(card);
     });
 
@@ -120,6 +131,75 @@ function showCluster(index) {
 
     // Update button states
     updateButtons();
+}
+
+// Create color picker for an image
+function createColorPicker(image, imageIdx) {
+    const picker = document.createElement('div');
+    picker.className = 'color-picker';
+
+    const label = document.createElement('span');
+    label.className = 'color-picker-label';
+    label.textContent = 'Tag:';
+    picker.appendChild(label);
+
+    availableColors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn';
+        btn.setAttribute('data-color', color);
+        btn.title = color;
+
+        // Set selected state
+        if (image.color === color || (color === 'None' && !image.color)) {
+            btn.classList.add('selected');
+        }
+
+        // Click handler
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await setImageColor(imageIdx, color, picker);
+        });
+
+        picker.appendChild(btn);
+    });
+
+    return picker;
+}
+
+// Set color for an image
+async function setImageColor(imageIdx, color, pickerElement) {
+    try {
+        const response = await fetch(`/api/color/${currentCluster}/${imageIdx}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ color })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to set color');
+        }
+
+        const result = await response.json();
+
+        // Update UI
+        const buttons = pickerElement.querySelectorAll('.color-btn');
+        buttons.forEach(btn => {
+            if (btn.getAttribute('data-color') === color) {
+                btn.classList.add('selected');
+            } else {
+                btn.classList.remove('selected');
+            }
+        });
+
+        // Update cluster data
+        clusters[currentCluster].images[imageIdx].color = color === 'None' ? null : color;
+
+    } catch (error) {
+        console.error('Error setting color:', error);
+        alert('Failed to set color tag. Check console for details.');
+    }
 }
 
 // Update navigation buttons

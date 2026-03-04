@@ -93,8 +93,10 @@ Both viewers display images in each group side-by-side and support keyboard navi
 
 - Finding duplicate or near-duplicate shots from burst mode
 - Identifying similar compositions from a photo session
+- **Tagging keeper images vs. rejects while reviewing similar shots**
 - Cleaning up large photo libraries
 - Finding bracketed exposures
+- **Organizing images for import into Capture One with pre-applied color tags**
 
 ## Example Output
 
@@ -145,6 +147,7 @@ Group 2: 2 similar image(s)
 - Modern, responsive web UI
 - Smooth image loading with caching
 - Grid layout with hover effects
+- **Color tagging for Capture One integration**
 - Detailed similarity information
 - Works in any modern browser
 
@@ -153,6 +156,14 @@ Group 2: 2 similar image(s)
 - `←` or `A` or `P` - Previous group
 - `Q` or `ESC` - Close window
 - Click navigation buttons
+- **Click color dots to tag images** (None, Red, Orange, Yellow, Green, Blue, Purple, Pink)
+
+**Color Tagging:**
+- Each image has 8 color tag options matching Capture One's color labels
+- Tags are saved to XMP sidecar files (`.xmp`) next to RAF files
+- Tags persist and can be imported into Capture One
+- Existing XMP metadata is preserved when updating tags
+- Visual feedback shows currently selected color
 
 **Usage:**
 ```bash

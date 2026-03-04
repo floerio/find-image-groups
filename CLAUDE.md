@@ -79,16 +79,25 @@ python fuji_similarity.py /path/to/photos --viewer
 **Web Viewer (`web_viewer.py`):**
 - `WebViewer` class provides Flask-based web server
   - `_setup_routes()` - Configures Flask API endpoints
-  - `/api/clusters` - Returns cluster metadata as JSON
+  - `/api/clusters` - Returns cluster metadata as JSON with current color tags
+  - `/api/colors` - Returns available Capture One color labels
+  - `/api/color/<cluster_id>/<image_id>` - POST endpoint to set color tag
   - `/api/image/<cluster_id>/<image_id>` - Serves processed images as JPEG
+  - `read_color_tag()` - Reads xmp:Label from XMP sidecar files
+  - `write_color_tag()` - Updates or creates XMP sidecar with color tag
+  - `get_xmp_path()` - Resolves XMP path from RAF path
   - Image caching to avoid reprocessing on navigation
   - Automatic image resizing for web display (max 1920px)
+  - XMP metadata preservation when updating color tags
 
 **Frontend (`static/js/viewer.js`):**
-- Fetches cluster data from API
-- Renders image grid dynamically
+- Fetches cluster data and color options from API
+- Renders image grid dynamically with color pickers
 - Handles keyboard navigation
 - Displays similarity percentages
+- `createColorPicker()` - Renders color tag buttons for each image
+- `setImageColor()` - Updates color via API and reflects in UI
+- Color buttons show selected state with checkmark and green border
 
 **Similarity detection approach**:
 - Uses perceptual hashing (average hash) rather than pixel-by-pixel comparison
@@ -106,6 +115,13 @@ python fuji_similarity.py /path/to/photos --viewer
 - RAW files processed at half-size for speed while maintaining similarity accuracy
 - O(n²) comparison complexity - all pairs compared
 - Progress bars via tqdm for user feedback on long operations
+
+**XMP Sidecar Integration**:
+- Color tags written to `<xmp:Label>` field in XMP sidecar files
+- Compatible with Capture One color labels: None, Red, Orange, Yellow, Green, Blue, Purple, Pink
+- Preserves all existing XMP metadata (creator, keywords, rating, etc.)
+- Creates minimal XMP if none exists
+- XMP files have same basename as RAF: `DSCF1234.RAF` → `DSCF1234.xmp`
 
 ## Key Parameters
 
