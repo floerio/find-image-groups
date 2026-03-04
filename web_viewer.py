@@ -6,6 +6,9 @@ Provides a fast, interactive browser-based interface.
 
 import json
 import base64
+import webbrowser
+import threading
+import time
 from io import BytesIO
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -270,14 +273,22 @@ class WebViewer:
                 print(f"Error loading image: {e}")
                 return f"Error loading image: {e}", 500
 
+    def open_browser(self):
+        """Open browser after a short delay."""
+        time.sleep(1.5)  # Wait for server to start
+        webbrowser.open(f'http://localhost:{self.port}')
+
     def run(self):
         """Start the web server."""
         print("\n" + "="*80)
         print("WEB VIEWER")
         print("="*80)
         print(f"Starting web server at http://localhost:{self.port}")
-        print("\nOpen your browser and navigate to the URL above.")
+        print("\nOpening browser automatically...")
         print("Press Ctrl+C to stop the server.")
         print("="*80 + "\n")
+
+        # Open browser in background thread
+        threading.Thread(target=self.open_browser, daemon=True).start()
 
         self.app.run(host='0.0.0.0', port=self.port, debug=False)

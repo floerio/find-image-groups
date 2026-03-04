@@ -3,6 +3,7 @@
 let clusters = [];
 let currentCluster = 0;
 let availableColors = [];
+let focusedImageIndex = 0;
 
 // DOM elements
 const loading = document.getElementById('loading');
@@ -68,10 +69,19 @@ function showCluster(index) {
     imageGrid.innerHTML = '';
     similarityList.innerHTML = '';
 
+    // Reset focused image
+    focusedImageIndex = 0;
+
     // Create image cards
     cluster.images.forEach((image, idx) => {
         const card = document.createElement('div');
         card.className = 'image-card';
+        card.dataset.imageIndex = idx;
+
+        // Set initial focus
+        if (idx === 0) {
+            card.classList.add('focused');
+        }
 
         const wrapper = document.createElement('div');
         wrapper.className = 'image-wrapper';
@@ -218,6 +228,44 @@ function prevCluster() {
     showCluster(currentCluster - 1);
 }
 
+// Set focus to an image
+function focusImage(index) {
+    const cluster = clusters[currentCluster];
+    if (!cluster) return;
+
+    // Wrap around
+    focusedImageIndex = ((index % cluster.images.length) + cluster.images.length) % cluster.images.length;
+
+    // Update UI
+    const cards = document.querySelectorAll('.image-card');
+    cards.forEach((card, idx) => {
+        if (idx === focusedImageIndex) {
+            card.classList.add('focused');
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            card.classList.remove('focused');
+        }
+    });
+}
+
+// Tag focused image with color
+async function tagFocusedImage(colorIndex) {
+    if (colorIndex < 0 || colorIndex >= availableColors.length) return;
+
+    const color = availableColors[colorIndex];
+    const cluster = clusters[currentCluster];
+    if (!cluster) return;
+
+    const card = document.querySelector(`.image-card[data-image-index="${focusedImageIndex}"]`);
+    if (!card) return;
+
+    const picker = card.querySelector('.color-picker');
+    await setImageColor(focusedImageIndex, color, picker);
+
+    // Auto-advance to next image
+    focusImage(focusedImageIndex + 1);
+}
+
 // Set up event listeners
 function setupEventListeners() {
     prevBtn.addEventListener('click', prevCluster);
@@ -225,6 +273,11 @@ function setupEventListeners() {
 
     // Keyboard navigation
     document.addEventListener('keydown', (e) => {
+        // Don't interfere with text input
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return;
+        }
+
         switch(e.key) {
             case 'ArrowLeft':
             case 'a':
@@ -249,6 +302,26 @@ function setupEventListeners() {
                 if (confirm('Close the viewer?')) {
                     window.close();
                 }
+                break;
+            case 'Tab':
+                e.preventDefault();
+                if (e.shiftKey) {
+                    focusImage(focusedImageIndex - 1);
+                } else {
+                    focusImage(focusedImageIndex + 1);
+                }
+                break;
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+                e.preventDefault();
+                const colorIndex = parseInt(e.key) - 1;
+                tagFocusedImage(colorIndex);
                 break;
         }
     });

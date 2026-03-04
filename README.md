@@ -80,6 +80,8 @@ Both viewers display images in each group side-by-side and support keyboard navi
 - `-w, --web-viewer` - Launch web-based viewer (recommended - better UI and performance).
 - `-v, --viewer` - Launch matplotlib viewer (alternative, works offline).
 - `-p, --port` - Port for web viewer (default: 5000).
+- `--no-cache` - Disable hash caching (recompute all hashes).
+- `--no-parallel` - Disable parallel processing (slower but uses less memory).
 
 ## How It Works
 
@@ -151,19 +153,27 @@ Group 2: 2 similar image(s)
 - Detailed similarity information
 - Works in any modern browser
 
-**Controls:**
+**Navigation:**
 - `→` or `D` or `N` - Next group
 - `←` or `A` or `P` - Previous group
 - `Q` or `ESC` - Close window
 - Click navigation buttons
-- **Click color dots to tag images** (None, Red, Orange, Yellow, Green, Blue, Purple, Pink)
 
-**Color Tagging:**
+**Color Tagging (Fast Workflow!):**
+- **Keyboard Shortcuts**: Press `1-8` to tag the focused image
+  - `1` = None, `2` = Red, `3` = Orange, `4` = Yellow
+  - `5` = Green, `6` = Blue, `7` = Purple, `8` = Pink
+- **Focus Navigation**:
+  - `TAB` - Focus next image
+  - `SHIFT+TAB` - Focus previous image
+  - Auto-advances to next image after tagging
+- **Mouse**: Click color dots below any image
 - Each image has 8 color tag options matching Capture One's color labels
 - Tags are saved to XMP sidecar files (`.xmp`) next to RAF files
 - Tags persist and can be imported into Capture One
 - Existing XMP metadata is preserved when updating tags
 - Visual feedback shows currently selected color
+- Focused image has green border
 
 **Usage:**
 ```bash
@@ -197,6 +207,26 @@ python fuji_similarity.py /path/to/photos --viewer
 - flask (web server for hybrid viewer)
 - matplotlib (offline matplotlib viewer)
 
+## Performance Features
+
+**Hash Caching:**
+- First run: Computes hashes for all RAF files
+- Subsequent runs: Loads hashes from `.fuji_similarity_cache.json`
+- Only reprocesses files that have changed (checks file size + modification time)
+- Instant re-runs with different thresholds
+- Cache auto-updates when files are added/changed
+
+**Parallel Processing:**
+- Uses all CPU cores to process multiple RAF files simultaneously
+- 4-8x faster on multi-core systems
+- Automatically scales to available cores
+- Can be disabled with `--no-parallel` if needed
+
+**Auto-open Browser:**
+- Web viewer automatically opens in your default browser
+- No need to copy/paste URLs
+- Just run the command and start tagging!
+
 ## Architecture Notes
 
 **Why Hybrid?**
@@ -206,6 +236,8 @@ python fuji_similarity.py /path/to/photos --viewer
 
 **Performance:**
 - RAW processing: ~1-2 seconds per image (Python/rawpy)
+- Parallel processing: 4-8x faster with multiprocessing
+- Hash caching: Near-instant for unchanged files
 - Comparison: O(n²) but fast with numpy
 - Web viewer: Images cached after first load
 - JavaScript would be 5-10x slower for RAW processing
@@ -215,3 +247,19 @@ python fuji_similarity.py /path/to/photos --viewer
 - Perceptual hashing is resistant to minor edits like resizing, slight color adjustments, and compression
 - Processing time depends on the number of files and hash size setting
 - Web viewer converts RAW to JPEG for browser display (max 1920px wide)
+- Cache file stores hash strings with file signatures for validation
+
+**Example Workflow:**
+```bash
+# First run: Processes 100 RAF files (takes ~3 minutes on 8-core CPU)
+python fuji_similarity.py /path/to/photos --web-viewer
+
+# Browser opens automatically
+# Review groups, tag images with keyboard shortcuts (1-8)
+# Press TAB to focus next image, number key to tag, repeat!
+
+# Second run with different threshold: Instant! (uses cache)
+python fuji_similarity.py /path/to/photos --web-viewer --threshold 5
+
+# Import into Capture One with color tags preserved
+```

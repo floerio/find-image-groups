@@ -8,8 +8,11 @@ Compares Fuji RAW files (.RAF) to find similar images based on perceptual hashin
 import argparse
 import os
 import sys
+import json
+import hashlib
 from pathlib import Path
 from typing import List, Tuple, Dict, Set
+from multiprocessing import Pool, cpu_count
 import rawpy
 import imagehash
 from PIL import Image
@@ -24,17 +27,20 @@ from web_viewer import WebViewer
 class ImageSimilarityFinder:
     """Find similar images in a collection of Fuji RAW files."""
 
-    def __init__(self, hash_size: int = 8, threshold: int = 10):
+    def __init__(self, hash_size: int = 8, threshold: int = 10, use_cache: bool = True):
         """
         Initialize the similarity finder.
 
         Args:
             hash_size: Size of the perceptual hash (larger = more precise)
             threshold: Hamming distance threshold (lower = more similar required)
+            use_cache: Whether to use hash caching
         """
         self.hash_size = hash_size
         self.threshold = threshold
+        self.use_cache = use_cache
         self.image_hashes: Dict[str, imagehash.ImageHash] = {}
+        self.cache_file = None
 
     def load_raw_file(self, filepath: Path) -> Image.Image:
         """
@@ -69,12 +75,94 @@ class ImageSimilarityFinder:
         # Using average hash - fast and effective for similarity detection
         return imagehash.average_hash(image, hash_size=self.hash_size)
 
-    def process_directory(self, directory: Path) -> None:
+    def get_file_signature(self, filepath: Path) -> str:
+        """
+        Get a unique signature for a file (for cache validation).
+
+        Args:
+            filepath: Path to file
+
+        Returns:
+            Signature string combining size and mtime
+        """
+        stat = filepath.stat()
+        return f"{stat.st_size}_{stat.st_mtime_ns}"
+
+    def load_cache(self, directory: Path) -> Dict:
+        """
+        Load hash cache from directory.
+
+        Args:
+            directory: Directory containing the cache file
+
+        Returns:
+            Cache dictionary
+        """
+        if not self.use_cache:
+            return {}
+
+        self.cache_file = directory / '.fuji_similarity_cache.json'
+
+        if not self.cache_file.exists():
+            return {}
+
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+
+            # Validate cache version and hash_size
+            if cache_data.get('version') != '1.0' or cache_data.get('hash_size') != self.hash_size:
+                print("Cache version mismatch or different hash_size, rebuilding cache...")
+                return {}
+
+            return cache_data.get('hashes', {})
+
+        except Exception as e:
+            print(f"Error loading cache: {e}")
+            return {}
+
+    def save_cache(self, directory: Path) -> None:
+        """
+        Save hash cache to directory.
+
+        Args:
+            directory: Directory to save cache file
+        """
+        if not self.use_cache or not self.cache_file:
+            return
+
+        try:
+            # Convert imagehash objects to strings
+            cache_data = {
+                'version': '1.0',
+                'hash_size': self.hash_size,
+                'hashes': {}
+            }
+
+            for filepath, hash_obj in self.image_hashes.items():
+                file_path_obj = Path(filepath)
+                if file_path_obj.exists():
+                    signature = self.get_file_signature(file_path_obj)
+                    cache_data['hashes'][filepath] = {
+                        'signature': signature,
+                        'hash': str(hash_obj)
+                    }
+
+            with open(self.cache_file, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            print(f"\nCache saved to {self.cache_file}")
+
+        except Exception as e:
+            print(f"Error saving cache: {e}")
+
+    def process_directory(self, directory: Path, parallel: bool = True) -> None:
         """
         Process all RAF files in a directory and compute their hashes.
 
         Args:
             directory: Path to directory containing RAF files
+            parallel: Whether to use parallel processing
         """
         raf_files = list(directory.glob("*.RAF")) + list(directory.glob("*.raf"))
 
@@ -82,15 +170,88 @@ class ImageSimilarityFinder:
             print(f"No RAF files found in {directory}")
             return
 
-        print(f"Found {len(raf_files)} RAF files. Processing...")
+        print(f"Found {len(raf_files)} RAF files.")
 
-        for filepath in tqdm(raf_files, desc="Computing hashes"):
-            try:
-                image = self.load_raw_file(filepath)
-                hash_value = self.compute_hash(image)
-                self.image_hashes[str(filepath)] = hash_value
-            except Exception as e:
-                print(f"\nError processing {filepath.name}: {e}", file=sys.stderr)
+        # Load cache
+        cache = self.load_cache(directory)
+        files_to_process = []
+        cached_count = 0
+
+        # Check which files need processing
+        for filepath in raf_files:
+            filepath_str = str(filepath)
+
+            if filepath_str in cache:
+                # Check if file signature matches (file hasn't changed)
+                cached_entry = cache[filepath_str]
+                current_signature = self.get_file_signature(filepath)
+
+                if cached_entry.get('signature') == current_signature:
+                    # Use cached hash
+                    try:
+                        hash_str = cached_entry['hash']
+                        self.image_hashes[filepath_str] = imagehash.hex_to_hash(hash_str)
+                        cached_count += 1
+                        continue
+                    except Exception:
+                        pass  # Fall through to reprocess
+
+            files_to_process.append(filepath)
+
+        if cached_count > 0:
+            print(f"Loaded {cached_count} hashes from cache.")
+
+        if not files_to_process:
+            print("All hashes loaded from cache!")
+            return
+
+        print(f"Processing {len(files_to_process)} files...")
+
+        # Process files
+        if parallel and len(files_to_process) > 1:
+            # Use parallel processing
+            num_workers = min(cpu_count(), len(files_to_process))
+            print(f"Using {num_workers} parallel workers")
+
+            with Pool(num_workers) as pool:
+                results = list(tqdm(
+                    pool.imap(self._process_single_file, files_to_process),
+                    total=len(files_to_process),
+                    desc="Computing hashes"
+                ))
+
+            # Collect results
+            for filepath, hash_value in results:
+                if hash_value is not None:
+                    self.image_hashes[str(filepath)] = hash_value
+        else:
+            # Sequential processing
+            for filepath in tqdm(files_to_process, desc="Computing hashes"):
+                filepath_str, hash_value = self._process_single_file(filepath)
+                if hash_value is not None:
+                    self.image_hashes[filepath_str] = hash_value
+
+        # Save cache
+        if self.use_cache:
+            self.save_cache(directory)
+
+    def _process_single_file(self, filepath: Path) -> Tuple[str, imagehash.ImageHash]:
+        """
+        Process a single RAF file (for parallel processing).
+
+        Args:
+            filepath: Path to RAF file
+
+        Returns:
+            Tuple of (filepath_str, hash_value)
+        """
+        try:
+            image = self.load_raw_file(filepath)
+            hash_value = self.compute_hash(image)
+            return (str(filepath), hash_value)
+        except Exception as e:
+            print(f"\nError processing {filepath.name}: {e}", file=sys.stderr)
+            return (str(filepath), None)
 
     def find_similar_images(self) -> List[Tuple[str, str, int]]:
         """
@@ -449,6 +610,18 @@ Examples:
         help="Port for web viewer (default: 5000)"
     )
 
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable hash caching (recompute all hashes)"
+    )
+
+    parser.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel processing (slower but uses less memory)"
+    )
+
     args = parser.parse_args()
 
     # Validate directory
@@ -463,10 +636,11 @@ Examples:
     # Create finder and process images
     finder = ImageSimilarityFinder(
         hash_size=args.hash_size,
-        threshold=args.threshold
+        threshold=args.threshold,
+        use_cache=not args.no_cache
     )
 
-    finder.process_directory(args.directory)
+    finder.process_directory(args.directory, parallel=not args.no_parallel)
 
     if not finder.image_hashes:
         print("No images were successfully processed.")

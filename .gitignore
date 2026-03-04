@@ -41,3 +41,9 @@ Thumbs.db
 *.RAF
 *.raf
 test_images/
+
+# Cache files
+.fuji_similarity_cache.json
+
+# XMP sidecar files (optional - remove if you want to track these)
+*.xmp

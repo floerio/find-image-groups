@@ -84,6 +84,39 @@ h1 {
     margin-top: 0.5rem;
 }
 
+.keyboard-help {
+    background: #2d2d2d;
+    padding: 1rem;
+    margin-top: 0.5rem;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.keyboard-help-section {
+    display: flex;
+    gap: 1rem;
+}
+
+.keyboard-shortcut {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.kbd {
+    background: #1a1a1a;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    border: 1px solid #404040;
+    font-family: monospace;
+    font-weight: bold;
+    color: #4CAF50;
+}
+
 main {
     flex: 1;
     padding: 2rem;
@@ -130,12 +163,18 @@ main {
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border 0.2s;
+    border: 3px solid transparent;
 }
 
 .image-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 8px 12px rgba(0, 0, 0, 0.4);
+}
+
+.image-card.focused {
+    border-color: #4CAF50;
+    box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
 }
 
 .image-wrapper {

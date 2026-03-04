@@ -93,11 +93,15 @@ python fuji_similarity.py /path/to/photos --viewer
 **Frontend (`static/js/viewer.js`):**
 - Fetches cluster data and color options from API
 - Renders image grid dynamically with color pickers
-- Handles keyboard navigation
+- Handles keyboard navigation and shortcuts
 - Displays similarity percentages
 - `createColorPicker()` - Renders color tag buttons for each image
 - `setImageColor()` - Updates color via API and reflects in UI
+- `focusImage()` - Manages focused image state for keyboard tagging
+- `tagFocusedImage()` - Tags focused image and auto-advances
 - Color buttons show selected state with checkmark and green border
+- Focused image highlighted with green border
+- Keyboard shortcuts: 1-8 for colors, TAB for focus navigation
 
 **Similarity detection approach**:
 - Uses perceptual hashing (average hash) rather than pixel-by-pixel comparison
@@ -113,6 +117,9 @@ python fuji_similarity.py /path/to/photos --viewer
 
 **Performance considerations**:
 - RAW files processed at half-size for speed while maintaining similarity accuracy
+- Parallel processing using multiprocessing.Pool for concurrent RAW loading
+- Hash caching system stores computed hashes with file signatures
+- Cache validation checks file size and modification time
 - O(n²) comparison complexity - all pairs compared
 - Progress bars via tqdm for user feedback on long operations
 
@@ -131,6 +138,8 @@ python fuji_similarity.py /path/to/photos --viewer
 - `--web-viewer`: Launch web-based viewer (recommended)
 - `--viewer`: Launch matplotlib viewer (offline alternative)
 - `--port`: Port for web server. Default: 5000
+- `--no-cache`: Disable hash caching (forces recomputation)
+- `--no-parallel`: Disable parallel processing
 
 ## Dependencies
 
