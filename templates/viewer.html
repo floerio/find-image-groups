@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuji RAW Similarity Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/viewer.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Fuji RAW Similarity Viewer</h1>
+            <div class="controls">
+                <button id="prevBtn" class="nav-btn">← Previous</button>
+                <span id="groupInfo">Loading...</span>
+                <button id="nextBtn" class="nav-btn">Next →</button>
+            </div>
+            <div class="help">
+                Keyboard: ← → or A D to navigate | Q or ESC to close window
+            </div>
+        </header>
+
+        <main>
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading clusters...</p>
+            </div>
+
+            <div id="viewer" class="viewer hidden">
+                <div id="imageGrid" class="image-grid"></div>
+
+                <div id="similarities" class="similarities">
+                    <h3>Similarities within this group:</h3>
+                    <div id="similarityList"></div>
+                </div>
+            </div>
+
+            <div id="error" class="error hidden">
+                <p>No similar images found.</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/viewer.js') }}"></script>
+</body>
+</html>
