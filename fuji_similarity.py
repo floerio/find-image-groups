@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Fuji RAW Image Similarity Finder
+Find Image Groups - Fuji RAW Similarity Finder
 
 Compares Fuji RAW files (.RAF) to find similar images based on perceptual hashing.
+Groups similar images and provides interactive viewer with color tagging.
 """
 
 import argparse

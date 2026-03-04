@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hybrid Python/JavaScript tool that compares Fuji RAW files (.RAF) to identify similar images using perceptual hashing.
+**Find Image Groups** - A hybrid Python/JavaScript tool that compares Fuji RAW files (.RAF) to identify similar images using perceptual hashing.
 
 **Architecture:**
 - **Python backend**: RAW processing, hashing, clustering, and comparison

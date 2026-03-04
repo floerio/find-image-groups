@@ -1,6 +1,6 @@
-# Fuji RAW Similarity Finder
+# Find Image Groups
 
-A simple Python tool to compare Fuji RAW files (.RAF) and find similar images using perceptual hashing.
+A Python tool to find and organize similar Fuji RAW images using perceptual hashing and intelligent clustering.
 
 ## Features
 

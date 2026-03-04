@@ -1,4 +1,4 @@
-// Fuji RAW Similarity Viewer - Client-side JavaScript
+// Find Image Groups - Client-side JavaScript
 
 let clusters = [];
 let currentCluster = 0;
