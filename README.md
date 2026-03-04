@@ -94,11 +94,13 @@ Both viewers display images in each group side-by-side and support keyboard navi
 ## Use Cases
 
 - Finding duplicate or near-duplicate shots from burst mode
+- **Zoom in to inspect details and choose the sharpest image from a burst**
 - Identifying similar compositions from a photo session
 - **Tagging keeper images vs. rejects while reviewing similar shots**
 - Cleaning up large photo libraries
 - Finding bracketed exposures
 - **Organizing images for import into Capture One with pre-applied color tags**
+- **Compare exposure/focus differences by zooming into similar images**
 
 ## Example Output
 
@@ -149,6 +151,7 @@ Group 2: 2 similar image(s)
 - Modern, responsive web UI
 - Smooth image loading with caching
 - Grid layout with hover effects
+- **Lightbox zoom viewer for detailed inspection**
 - **Color tagging for Capture One integration**
 - Detailed similarity information
 - Works in any modern browser
@@ -158,6 +161,17 @@ Group 2: 2 similar image(s)
 - `←` or `A` or `P` - Previous group
 - `Q` or `ESC` - Close window
 - Click navigation buttons
+
+**Image Zoom/Inspection:**
+- **Click any image** to open fullscreen lightbox
+- **Mouse wheel** - Zoom in/out
+- **+/-** keys - Zoom in/out
+- **Space** - Fit to screen
+- **Click and drag** - Pan when zoomed
+- **Arrow keys** - Navigate between images (or pan when zoomed with Shift/Ctrl)
+- **ESC** - Close lightbox
+- **1-8 keys** - Tag color while in lightbox view
+- Perfect for inspecting fine details to choose between similar shots
 
 **Color Tagging (Fast Workflow!):**
 - **Keyboard Shortcuts**: Press `1-8` to tag the focused image
@@ -257,6 +271,9 @@ python fuji_similarity.py /path/to/photos --web-viewer
 # Browser opens automatically
 # Review groups, tag images with keyboard shortcuts (1-8)
 # Press TAB to focus next image, number key to tag, repeat!
+# Click any image to zoom and inspect details
+# Use mouse wheel to zoom in/out, click-drag to pan
+# Tag colors even while in zoom view
 
 # Second run with different threshold: Instant! (uses cache)
 python fuji_similarity.py /path/to/photos --web-viewer --threshold 5

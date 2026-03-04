@@ -99,9 +99,17 @@ python fuji_similarity.py /path/to/photos --viewer
 - `setImageColor()` - Updates color via API and reflects in UI
 - `focusImage()` - Manages focused image state for keyboard tagging
 - `tagFocusedImage()` - Tags focused image and auto-advances
+- **Lightbox zoom viewer**:
+  - `openLightbox()` - Opens fullscreen image viewer
+  - `showLightboxImage()` - Updates lightbox display with current image
+  - `setZoom()` - Handles zoom level (0.5x to 5x)
+  - `fitToScreen()` - Resets zoom to 100%
+  - Mouse wheel zoom, click-drag panning
+  - Keyboard navigation in lightbox mode
+  - Color tagging available in lightbox
 - Color buttons show selected state with checkmark and green border
 - Focused image highlighted with green border
-- Keyboard shortcuts: 1-8 for colors, TAB for focus navigation
+- Keyboard shortcuts: 1-8 for colors, TAB for focus navigation, click for zoom
 
 **Similarity detection approach**:
 - Uses perceptual hashing (average hash) rather than pixel-by-pixel comparison

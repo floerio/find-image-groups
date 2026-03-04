@@ -5,6 +5,16 @@ let currentCluster = 0;
 let availableColors = [];
 let focusedImageIndex = 0;
 
+// Lightbox state
+let lightboxOpen = false;
+let lightboxImageIndex = 0;
+let zoomLevel = 1;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let panOffsetX = 0;
+let panOffsetY = 0;
+
 // DOM elements
 const loading = document.getElementById('loading');
 const viewer = document.getElementById('viewer');
@@ -85,6 +95,13 @@ function showCluster(index) {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'image-wrapper';
+        wrapper.style.cursor = 'pointer';
+        wrapper.title = 'Click to zoom';
+
+        // Click to open lightbox
+        wrapper.addEventListener('click', () => {
+            openLightbox(idx);
+        });
 
         const img = document.createElement('img');
         img.className = 'loading';
@@ -278,6 +295,86 @@ function setupEventListeners() {
             return;
         }
 
+        // Lightbox controls
+        if (lightboxOpen) {
+            switch(e.key) {
+                case 'Escape':
+                    e.preventDefault();
+                    closeLightbox();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (e.shiftKey || e.ctrlKey) {
+                        // Pan left when zoomed
+                        if (zoomLevel > 1) {
+                            panOffsetX += 50;
+                            showLightboxImage();
+                        }
+                    } else {
+                        lightboxPrevImage();
+                    }
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (e.shiftKey || e.ctrlKey) {
+                        // Pan right when zoomed
+                        if (zoomLevel > 1) {
+                            panOffsetX -= 50;
+                            showLightboxImage();
+                        }
+                    } else {
+                        lightboxNextImage();
+                    }
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (zoomLevel > 1) {
+                        panOffsetY += 50;
+                        showLightboxImage();
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (zoomLevel > 1) {
+                        panOffsetY -= 50;
+                        showLightboxImage();
+                    }
+                    break;
+                case '+':
+                case '=':
+                    e.preventDefault();
+                    setZoom(zoomLevel * 1.2);
+                    break;
+                case '-':
+                case '_':
+                    e.preventDefault();
+                    setZoom(zoomLevel / 1.2);
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    fitToScreen();
+                    break;
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                    e.preventDefault();
+                    const colorIndex = parseInt(e.key) - 1;
+                    if (colorIndex >= 0 && colorIndex < availableColors.length) {
+                        const color = availableColors[colorIndex];
+                        const picker = document.querySelector('#lightboxColorPicker .color-picker');
+                        setImageColor(lightboxImageIndex, color, picker);
+                    }
+                    break;
+            }
+            return;
+        }
+
+        // Normal grid view controls
         switch(e.key) {
             case 'ArrowLeft':
             case 'a':
@@ -325,6 +422,152 @@ function setupEventListeners() {
                 break;
         }
     });
+}
+
+// Lightbox functions
+function openLightbox(imageIndex) {
+    const cluster = clusters[currentCluster];
+    if (!cluster) return;
+
+    lightboxOpen = true;
+    lightboxImageIndex = imageIndex;
+    zoomLevel = 1;
+    panOffsetX = 0;
+    panOffsetY = 0;
+
+    const lightbox = document.getElementById('lightbox');
+    lightbox.classList.remove('hidden');
+
+    showLightboxImage();
+    setupLightboxEventListeners();
+}
+
+function closeLightbox() {
+    lightboxOpen = false;
+    const lightbox = document.getElementById('lightbox');
+    lightbox.classList.add('hidden');
+}
+
+function showLightboxImage() {
+    const cluster = clusters[currentCluster];
+    if (!cluster) return;
+
+    const image = cluster.images[lightboxImageIndex];
+    const lightboxImg = document.getElementById('lightboxImage');
+    const filenameElem = document.querySelector('.lightbox-filename');
+    const imageNumElem = document.getElementById('lightboxImageNum');
+    const colorPickerElem = document.getElementById('lightboxColorPicker');
+
+    // Update image
+    lightboxImg.src = `/api/image/${currentCluster}/${lightboxImageIndex}`;
+    lightboxImg.style.transform = `scale(${zoomLevel}) translate(${panOffsetX}px, ${panOffsetY}px)`;
+
+    // Update filename
+    filenameElem.textContent = image.filename;
+
+    // Update image number
+    imageNumElem.textContent = `${lightboxImageIndex + 1} of ${cluster.images.length}`;
+
+    // Update zoom level display
+    document.querySelector('.lightbox-zoom-level').textContent = `${Math.round(zoomLevel * 100)}%`;
+
+    // Update color picker
+    colorPickerElem.innerHTML = '';
+    const picker = createColorPicker(image, lightboxImageIndex);
+    picker.classList.remove('color-picker');
+    picker.className = 'color-picker';
+    colorPickerElem.appendChild(picker);
+}
+
+function setZoom(newZoom) {
+    zoomLevel = Math.max(0.5, Math.min(5, newZoom));
+
+    // Reset pan if zoomed out
+    if (zoomLevel <= 1) {
+        panOffsetX = 0;
+        panOffsetY = 0;
+    }
+
+    showLightboxImage();
+}
+
+function fitToScreen() {
+    zoomLevel = 1;
+    panOffsetX = 0;
+    panOffsetY = 0;
+    showLightboxImage();
+}
+
+function lightboxPrevImage() {
+    const cluster = clusters[currentCluster];
+    if (!cluster) return;
+
+    lightboxImageIndex = (lightboxImageIndex - 1 + cluster.images.length) % cluster.images.length;
+    zoomLevel = 1;
+    panOffsetX = 0;
+    panOffsetY = 0;
+    showLightboxImage();
+}
+
+function lightboxNextImage() {
+    const cluster = clusters[currentCluster];
+    if (!cluster) return;
+
+    lightboxImageIndex = (lightboxImageIndex + 1) % cluster.images.length;
+    zoomLevel = 1;
+    panOffsetX = 0;
+    panOffsetY = 0;
+    showLightboxImage();
+}
+
+function setupLightboxEventListeners() {
+    const lightboxImg = document.getElementById('lightboxImage');
+    const container = document.querySelector('.lightbox-image-container');
+
+    // Zoom buttons
+    document.getElementById('zoomIn').onclick = () => setZoom(zoomLevel * 1.2);
+    document.getElementById('zoomOut').onclick = () => setZoom(zoomLevel / 1.2);
+    document.getElementById('fitScreen').onclick = fitToScreen;
+    document.getElementById('closeLightbox').onclick = closeLightbox;
+
+    // Navigation buttons
+    document.getElementById('lightboxPrev').onclick = lightboxPrevImage;
+    document.getElementById('lightboxNext').onclick = lightboxNextImage;
+
+    // Mouse wheel zoom
+    container.onwheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        setZoom(zoomLevel * delta);
+    };
+
+    // Pan functionality
+    container.onmousedown = (e) => {
+        if (zoomLevel > 1) {
+            isPanning = true;
+            panStartX = e.clientX - panOffsetX;
+            panStartY = e.clientY - panOffsetY;
+            container.classList.add('grabbing');
+        }
+    };
+
+    container.onmousemove = (e) => {
+        if (isPanning) {
+            panOffsetX = e.clientX - panStartX;
+            panOffsetY = e.clientY - panStartY;
+            lightboxImg.style.transform = `scale(${zoomLevel}) translate(${panOffsetX}px, ${panOffsetY}px)`;
+        }
+    };
+
+    container.onmouseup = () => {
+        isPanning = false;
+        container.classList.remove('grabbing');
+    };
+
+    container.onmouseleave = () => {
+        isPanning = false;
+        container.classList.remove('grabbing');
+    };
 }
 
 // Start the application

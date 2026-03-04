@@ -32,8 +32,9 @@
                 </div>
                 <div class="keyboard-help-section">
                     <span>Focus:</span>
-                    <span class="keyboard-shortcut"><span class="kbd">TAB</span>Next Image</span>
-                    <span class="keyboard-shortcut"><span class="kbd">SHIFT+TAB</span>Previous Image</span>
+                    <span class="keyboard-shortcut"><span class="kbd">TAB</span>Next</span>
+                    <span class="keyboard-shortcut"><span class="kbd">SHIFT+TAB</span>Previous</span>
+                    <span class="keyboard-shortcut"><span class="kbd">CLICK</span>Zoom</span>
                 </div>
             </div>
         </header>
@@ -57,6 +58,33 @@
                 <p>No similar images found.</p>
             </div>
         </main>
+
+        <!-- Lightbox -->
+        <div id="lightbox" class="lightbox hidden">
+            <div class="lightbox-header">
+                <div class="lightbox-filename"></div>
+                <div class="lightbox-controls">
+                    <button class="lightbox-btn" id="zoomOut" title="Zoom Out (-)">−</button>
+                    <span class="lightbox-zoom-level">100%</span>
+                    <button class="lightbox-btn" id="zoomIn" title="Zoom In (+)">+</button>
+                    <button class="lightbox-btn" id="fitScreen" title="Fit to Screen (Space)">⊡</button>
+                    <button class="lightbox-btn" id="closeLightbox" title="Close (ESC)">✕</button>
+                </div>
+            </div>
+            <div class="lightbox-content">
+                <button class="lightbox-nav lightbox-nav-prev" id="lightboxPrev">‹</button>
+                <div class="lightbox-image-container">
+                    <img id="lightboxImage" src="" alt="">
+                </div>
+                <button class="lightbox-nav lightbox-nav-next" id="lightboxNext">›</button>
+            </div>
+            <div class="lightbox-footer">
+                <div class="lightbox-info">
+                    <span id="lightboxImageNum">1 of 3</span>
+                </div>
+                <div id="lightboxColorPicker" class="color-picker"></div>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/viewer.js') }}"></script>
