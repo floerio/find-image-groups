@@ -286,6 +286,8 @@ class ImageSimilarityFinder:
                 # Calculate Hamming distance
                 distance = hash1 - hash2
 
+                print(f"P1: {path1} - {hash1}, P2: {path2} - {hash2}, Distance: {distance}")
+
                 if distance <= self.threshold:
                     similar_pairs.append((path1, path2, distance))
 
