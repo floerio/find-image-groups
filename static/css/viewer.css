@@ -80,6 +80,71 @@ h1 {
     text-align: center;
 }
 
+.threshold-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.threshold-label {
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    margin-right: 0.5rem;
+}
+
+.threshold-btn {
+    background: #3a3a3a;
+    color: #e0e0e0;
+    border: 1px solid #505050;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 35px;
+}
+
+.threshold-btn:hover {
+    background: #FF9800;
+    border-color: #FF9800;
+}
+
+.apply-btn {
+    background: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.apply-btn:hover {
+    background: #45a049;
+    border-color: #45a049;
+}
+
+.threshold-value {
+    color: #FF9800;
+    font-weight: bold;
+    font-size: 1.1rem;
+    min-width: 40px;
+    text-align: center;
+    background: #2a2a2a;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+}
+
+.threshold-status {
+    color: #4CAF50;
+    font-size: 0.9rem;
+    margin-left: 1rem;
+    min-width: 150px;
+    text-align: left;
+}
+
 .nav-btn {
     background: #4CAF50;
     color: white;

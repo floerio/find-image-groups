@@ -7,6 +7,8 @@ let availableColors = [];
 let focusedImageIndex = 0;
 let showUngrouped = false;
 let gridBrightness = 100; // Global brightness for grid view
+let currentThreshold = 10; // Current similarity threshold
+let isReclustering = false; // Flag to prevent multiple simultaneous re-clustering
 
 // Lightbox state
 let lightboxOpen = false;
@@ -53,6 +55,9 @@ async function init() {
             showError();
             return;
         }
+
+        // Initialize threshold display
+        setThresholdDisplay(10); // Default threshold
 
         loading.classList.add('hidden');
         viewer.classList.remove('hidden');
@@ -417,6 +422,72 @@ function resetGridBrightness() {
     setGridBrightness(100);
 }
 
+// Threshold control functions
+function setThresholdDisplay(threshold) {
+    currentThreshold = threshold;
+    const display = document.getElementById('thresholdDisplay');
+    if (display) {
+        display.textContent = threshold;
+    }
+}
+
+function updateThresholdStatus(message, isError = false) {
+    const status = document.getElementById('thresholdStatus');
+    if (status) {
+        status.textContent = message;
+        status.style.color = isError ? '#f44336' : '#4CAF50';
+    }
+}
+
+async function applyNewThreshold() {
+    if (isReclustering) {
+        updateThresholdStatus('Re-clustering already in progress...', true);
+        return;
+    }
+    
+    isReclustering = true;
+    updateThresholdStatus('Re-clustering...', false);
+    
+    try {
+        const response = await fetch('/api/recluster', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ threshold: currentThreshold })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Re-clustering failed');
+        }
+        
+        const result = await response.json();
+        
+        // Update clusters and ungrouped images
+        clusters = result.clusters;
+        ungroupedImages = result.ungrouped;
+        showUngrouped = ungroupedImages.length > 0;
+        
+        // Reset to first cluster
+        currentCluster = 0;
+        focusedImageIndex = 0;
+        
+        // Update display
+        showCluster(0);
+        
+        // Update status
+        const stats = result.stats;
+        updateThresholdStatus(`Success! ${stats.num_clusters} groups, ${stats.num_ungrouped} ungrouped`, false);
+        
+    } catch (error) {
+        console.error('Re-clustering error:', error);
+        updateThresholdStatus(`Error: ${error.message}`, true);
+    } finally {
+        isReclustering = false;
+    }
+}
+
 // Tag focused image with color
 async function tagFocusedImage(colorIndex) {
     if (colorIndex < 0 || colorIndex >= availableColors.length) return;
@@ -457,6 +528,29 @@ function setupEventListeners() {
     }
     if (brightnessResetBtn) {
         brightnessResetBtn.onclick = resetGridBrightness;
+    }
+    
+    // Set up threshold control event listeners
+    const thresholdDecreaseBtn = document.getElementById('thresholdDecrease');
+    const thresholdIncreaseBtn = document.getElementById('thresholdIncrease');
+    const thresholdApplyBtn = document.getElementById('thresholdApply');
+    
+    if (thresholdDecreaseBtn) {
+        thresholdDecreaseBtn.onclick = () => {
+            if (currentThreshold > 1) {
+                setThresholdDisplay(currentThreshold - 1);
+            }
+        };
+    }
+    if (thresholdIncreaseBtn) {
+        thresholdIncreaseBtn.onclick = () => {
+            if (currentThreshold < 64) {
+                setThresholdDisplay(currentThreshold + 1);
+            }
+        };
+    }
+    if (thresholdApplyBtn) {
+        thresholdApplyBtn.onclick = applyNewThreshold;
     }
 
     // Keyboard navigation

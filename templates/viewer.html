@@ -21,6 +21,14 @@
                 <button id="gridBrightnessUp" class="brightness-btn" title="Brighter (X)">☀+</button>
                 <button id="gridBrightnessReset" class="brightness-btn" title="Reset (Space)">☀↻</button>
             </div>
+            <div class="threshold-controls">
+                <span class="threshold-label">Similarity Threshold:</span>
+                <button id="thresholdDecrease" class="threshold-btn" title="More Similar (Lower Threshold)">←</button>
+                <span id="thresholdDisplay" class="threshold-value">10</span>
+                <button id="thresholdIncrease" class="threshold-btn" title="Less Similar (Higher Threshold)">→</button>
+                <button id="thresholdApply" class="threshold-btn apply-btn" title="Re-cluster with new threshold">Apply</button>
+                <span id="thresholdStatus" class="threshold-status"></span>
+            </div>
             <div class="help">
                 Keyboard: ← → or A D to navigate | Q or ESC to close window
             </div>

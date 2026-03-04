@@ -178,6 +178,14 @@ Group 2: 2 similar image(s)
 - **Arrow keys** - Navigate between images (or pan when zoomed with Shift/Ctrl)
 - **ESC** - Close lightbox
 - **1-8 keys** - Tag color while in lightbox view
+
+**Online Threshold Adjustment:**
+- **←/→ buttons** - Decrease/increase similarity threshold
+- **Apply button** - Re-cluster images with new threshold
+- **Real-time feedback** - See new grouping results instantly
+- **Range: 1-64** - Lower = more similar required, Higher = less similar required
+- **Status display** - Shows number of groups and ungrouped images after re-clustering
+- **No restart needed** - Fine-tune grouping without restarting the application
 - **EXIF data displayed**: ISO, shutter speed, aperture, focal length, exposure compensation
 - **Brightness control**: Perfect for checking shadow detail and highlight clipping
 - Inspect fine details to choose between similar shots
