@@ -62,7 +62,12 @@
         <!-- Lightbox -->
         <div id="lightbox" class="lightbox hidden">
             <div class="lightbox-header">
-                <div class="lightbox-filename"></div>
+                <div class="lightbox-header-left">
+                    <div class="lightbox-filename"></div>
+                    <div class="lightbox-exif-header" id="lightboxExifHeader">
+                        <!-- EXIF data will be inserted here -->
+                    </div>
+                </div>
                 <div class="lightbox-controls">
                     <button class="lightbox-btn" id="zoomOut" title="Zoom Out (-)">−</button>
                     <span class="lightbox-zoom-level">100%</span>
@@ -80,7 +85,10 @@
             </div>
             <div class="lightbox-footer">
                 <div class="lightbox-info">
-                    <span id="lightboxImageNum">1 of 3</span>
+                    <span class="lightbox-image-num" id="lightboxImageNum">1 of 3</span>
+                    <div class="lightbox-exif" id="lightboxExif">
+                        <!-- EXIF data will be inserted here -->
+                    </div>
                 </div>
                 <div id="lightboxColorPicker" class="color-picker"></div>
             </div>

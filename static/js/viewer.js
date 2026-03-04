@@ -448,7 +448,7 @@ function closeLightbox() {
     lightbox.classList.add('hidden');
 }
 
-function showLightboxImage() {
+async function showLightboxImage() {
     const cluster = clusters[currentCluster];
     if (!cluster) return;
 
@@ -457,6 +457,8 @@ function showLightboxImage() {
     const filenameElem = document.querySelector('.lightbox-filename');
     const imageNumElem = document.getElementById('lightboxImageNum');
     const colorPickerElem = document.getElementById('lightboxColorPicker');
+    const exifElemHeader = document.getElementById('lightboxExifHeader');
+    const exifElemFooter = document.getElementById('lightboxExif');
 
     // Update image
     lightboxImg.src = `/api/image/${currentCluster}/${lightboxImageIndex}`;
@@ -477,6 +479,62 @@ function showLightboxImage() {
     picker.classList.remove('color-picker');
     picker.className = 'color-picker';
     colorPickerElem.appendChild(picker);
+
+    // Load and display EXIF data
+    try {
+        const response = await fetch(`/api/exif/${currentCluster}/${lightboxImageIndex}`);
+        if (response.ok) {
+            const exif = await response.json();
+            console.log('EXIF data received:', exif); // Debug logging
+            displayExifData(exif, exifElemHeader, exifElemFooter);
+        } else {
+            console.error('EXIF request failed:', response.status);
+            exifElemHeader.innerHTML = '<span style="color: #888;">No EXIF data available</span>';
+        }
+    } catch (error) {
+        console.error('Error loading EXIF data:', error);
+        exifElemHeader.innerHTML = '<span style="color: #888;">Error loading EXIF</span>';
+    }
+}
+
+function displayExifData(exif, containerHeader, containerFooter) {
+    containerHeader.innerHTML = '';
+    if (containerFooter) containerFooter.innerHTML = '';
+
+    const fields = [
+        { key: 'iso', label: 'ISO' },
+        { key: 'shutter_speed', label: 'Shutter' },
+        { key: 'aperture', label: 'Aperture' },
+        { key: 'focal_length', label: 'Focal' },
+        { key: 'exposure_bias', label: 'Exp Comp' }
+    ];
+
+    let hasData = false;
+
+    fields.forEach(field => {
+        if (exif[field.key]) {
+            hasData = true;
+            const item = document.createElement('div');
+            item.className = 'exif-item';
+
+            const label = document.createElement('div');
+            label.className = 'exif-label';
+            label.textContent = field.label;
+
+            const value = document.createElement('div');
+            value.className = 'exif-value';
+            value.textContent = exif[field.key];
+
+            item.appendChild(label);
+            item.appendChild(value);
+            containerHeader.appendChild(item);
+        }
+    });
+
+    if (!hasData) {
+        console.log('No EXIF fields found in data:', exif);
+        containerHeader.innerHTML = '<span style="color: #ff9800; font-size: 0.9rem;">⚠ No EXIF data found in file</span>';
+    }
 }
 
 function setZoom(newZoom) {

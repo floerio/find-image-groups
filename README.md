@@ -95,10 +95,11 @@ Both viewers display images in each group side-by-side and support keyboard navi
 
 - Finding duplicate or near-duplicate shots from burst mode
 - **Zoom in to inspect details and choose the sharpest image from a burst**
+- **Compare camera settings (ISO, shutter, aperture) between similar shots**
 - Identifying similar compositions from a photo session
 - **Tagging keeper images vs. rejects while reviewing similar shots**
 - Cleaning up large photo libraries
-- Finding bracketed exposures
+- Finding bracketed exposures with EXIF confirmation
 - **Organizing images for import into Capture One with pre-applied color tags**
 - **Compare exposure/focus differences by zooming into similar images**
 
@@ -171,6 +172,7 @@ Group 2: 2 similar image(s)
 - **Arrow keys** - Navigate between images (or pan when zoomed with Shift/Ctrl)
 - **ESC** - Close lightbox
 - **1-8 keys** - Tag color while in lightbox view
+- **EXIF data displayed**: ISO, shutter speed, aperture, focal length, exposure compensation
 - Perfect for inspecting fine details to choose between similar shots
 
 **Color Tagging (Fast Workflow!):**

@@ -9,6 +9,7 @@ import base64
 import webbrowser
 import threading
 import time
+import subprocess
 from io import BytesIO
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -40,6 +41,90 @@ class WebViewer:
         self.app = Flask(__name__)
         self.image_cache = {}
         self._setup_routes()
+
+    def get_exif_data(self, raf_path: str) -> Dict:
+        """
+        Extract EXIF data from RAF file using exiftool.
+
+        Args:
+            raf_path: Path to RAF file
+
+        Returns:
+            Dictionary with EXIF data
+        """
+        exif_data = {
+            'iso': None,
+            'shutter_speed': None,
+            'aperture': None,
+            'focal_length': None,
+            'datetime': None,
+            'lens': None,
+            'exposure_bias': None,
+        }
+
+        try:
+            # Use exiftool to extract EXIF data
+            result = subprocess.run(
+                ['exiftool', '-j', '-ISO', '-ShutterSpeed', '-Aperture', '-FocalLength',
+                 '-DateTimeOriginal', '-LensModel', '-ExposureCompensation', str(raf_path)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                if data and len(data) > 0:
+                    exif = data[0]
+
+                    # ISO
+                    if 'ISO' in exif:
+                        exif_data['iso'] = str(exif['ISO'])
+
+                    # Shutter speed
+                    if 'ShutterSpeed' in exif:
+                        exif_data['shutter_speed'] = exif['ShutterSpeed']
+
+                    # Aperture
+                    if 'Aperture' in exif:
+                        exif_data['aperture'] = f"f/{exif['Aperture']}"
+
+                    # Focal length
+                    if 'FocalLength' in exif:
+                        focal_str = exif['FocalLength']
+                        # Remove 'mm' if present
+                        focal_str = focal_str.replace(' mm', '').replace('mm', '')
+                        try:
+                            focal = float(focal_str)
+                            exif_data['focal_length'] = f"{int(focal)}mm"
+                        except:
+                            exif_data['focal_length'] = focal_str
+
+                    # DateTime
+                    if 'DateTimeOriginal' in exif:
+                        exif_data['datetime'] = exif['DateTimeOriginal']
+
+                    # Lens
+                    if 'LensModel' in exif:
+                        exif_data['lens'] = exif['LensModel']
+
+                    # Exposure compensation
+                    if 'ExposureCompensation' in exif:
+                        comp_str = exif['ExposureCompensation']
+                        try:
+                            comp = float(comp_str)
+                            if comp != 0:
+                                exif_data['exposure_bias'] = f"{comp:+.1f} EV"
+                        except:
+                            if comp_str and comp_str != '0':
+                                exif_data['exposure_bias'] = comp_str
+
+        except subprocess.TimeoutExpired:
+            print(f"Timeout reading EXIF from {raf_path}")
+        except Exception as e:
+            print(f"Error reading EXIF from {raf_path}: {e}")
+
+        return exif_data
 
     def get_xmp_path(self, raf_path: str) -> Path:
         """Get the XMP sidecar path for a RAF file."""
@@ -224,6 +309,21 @@ class WebViewer:
                 return jsonify({'success': True, 'color': color})
             else:
                 return jsonify({'error': 'Failed to write XMP'}), 500
+
+        @self.app.route('/api/exif/<int:cluster_id>/<int:image_id>')
+        def get_exif(cluster_id, image_id):
+            """Get EXIF data for an image."""
+            if cluster_id >= len(self.clusters):
+                return jsonify({'error': 'Cluster not found'}), 404
+
+            cluster = self.clusters[cluster_id]
+            if image_id >= len(cluster['images']):
+                return jsonify({'error': 'Image not found'}), 404
+
+            image_path = cluster['images'][image_id]
+            exif_data = self.get_exif_data(image_path)
+
+            return jsonify(exif_data)
 
         @self.app.route('/api/image/<int:cluster_id>/<int:image_id>')
         def get_image(cluster_id, image_id):

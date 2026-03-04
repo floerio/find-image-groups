@@ -83,8 +83,10 @@ python fuji_similarity.py /path/to/photos --viewer
   - `/api/colors` - Returns available Capture One color labels
   - `/api/color/<cluster_id>/<image_id>` - POST endpoint to set color tag
   - `/api/image/<cluster_id>/<image_id>` - Serves processed images as JPEG
+  - `/api/exif/<cluster_id>/<image_id>` - Returns EXIF data for image
   - `read_color_tag()` - Reads xmp:Label from XMP sidecar files
   - `write_color_tag()` - Updates or creates XMP sidecar with color tag
+  - `get_exif_data()` - Extracts EXIF data from RAF files (ISO, shutter, aperture, focal length, etc.)
   - `get_xmp_path()` - Resolves XMP path from RAF path
   - Image caching to avoid reprocessing on navigation
   - Automatic image resizing for web display (max 1920px)
@@ -101,12 +103,14 @@ python fuji_similarity.py /path/to/photos --viewer
 - `tagFocusedImage()` - Tags focused image and auto-advances
 - **Lightbox zoom viewer**:
   - `openLightbox()` - Opens fullscreen image viewer
-  - `showLightboxImage()` - Updates lightbox display with current image
+  - `showLightboxImage()` - Updates lightbox display with current image and EXIF data
+  - `displayExifData()` - Renders EXIF information (ISO, shutter, aperture, focal length, exposure comp)
   - `setZoom()` - Handles zoom level (0.5x to 5x)
   - `fitToScreen()` - Resets zoom to 100%
   - Mouse wheel zoom, click-drag panning
   - Keyboard navigation in lightbox mode
   - Color tagging available in lightbox
+  - EXIF data fetched and displayed for each image
 - Color buttons show selected state with checkmark and green border
 - Focused image highlighted with green border
 - Keyboard shortcuts: 1-8 for colors, TAB for focus navigation, click for zoom
