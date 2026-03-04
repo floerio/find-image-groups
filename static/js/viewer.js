@@ -9,6 +9,7 @@ let showUngrouped = false;
 let gridBrightness = 100; // Global brightness for grid view
 let currentThreshold = 10; // Current similarity threshold
 let isReclustering = false; // Flag to prevent multiple simultaneous re-clustering
+let activeColorFilters = new Set(); // Track which colors are being filtered out
 
 // Lightbox state
 let lightboxOpen = false;
@@ -63,6 +64,7 @@ async function init() {
         viewer.classList.remove('hidden');
 
         showCluster(0);
+        createMainColorFilter(); // Initialize main color filter
         setupEventListeners();
     } catch (error) {
         console.error('Error loading clusters:', error);
@@ -439,6 +441,233 @@ function updateThresholdStatus(message, isError = false) {
     }
 }
 
+// Color filter functions
+function createColorFilterUI() {
+    const filterContainer = document.getElementById('lightboxColorFilter');
+    if (!filterContainer) {
+        console.log('Color filter container not found');
+        return;
+    }
+    
+    filterContainer.innerHTML = '';
+    
+    // Create color filter buttons for each color (except "None")
+    const filterableColors = availableColors.filter(color => color !== 'None');
+    
+    console.log('Available colors for filtering:', filterableColors);
+    
+    filterableColors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-color-btn';
+        btn.title = `Hide ${color} images`;
+        btn.dataset.color = color;
+        
+        // Set color based on the color name
+        const colorMap = {
+            'Red': '#f44336',
+            'Orange': '#ff9800',
+            'Yellow': '#ffeb3b',
+            'Green': '#4CAF50',
+            'Blue': '#2196F3',
+            'Purple': '#9c27b0',
+            'Pink': '#e91e63'
+        };
+        
+        btn.style.backgroundColor = colorMap[color] || '#999';
+        
+        // Check if this color is currently filtered
+        if (activeColorFilters.has(color)) {
+            btn.classList.add('active');
+        }
+        
+        btn.addEventListener('click', () => toggleColorFilter(color, btn));
+        filterContainer.appendChild(btn);
+    });
+}
+
+function toggleColorFilter(color, button) {
+    if (activeColorFilters.has(color)) {
+        activeColorFilters.delete(color);
+        button.classList.remove('active');
+    } else {
+        activeColorFilters.add(color);
+        button.classList.add('active');
+    }
+    
+    // Apply the filter to the current view
+    applyColorFilter();
+}
+
+function clearColorFilter() {
+    activeColorFilters.clear();
+    const buttons = document.querySelectorAll('.filter-color-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    applyMainColorFilter();
+    updateFilterStatus();
+}
+
+// Main color filter functions
+function createMainColorFilter() {
+    const filterContainer = document.getElementById('mainColorFilter');
+    if (!filterContainer) {
+        console.log('Main color filter container not found');
+        return;
+    }
+    
+    filterContainer.innerHTML = '';
+    
+    // Create color filter buttons for each color (except "None")
+    const filterableColors = availableColors.filter(color => color !== 'None');
+    
+    console.log('Creating main color filter with colors:', filterableColors);
+    
+    filterableColors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-color-btn';
+        btn.title = `Hide ${color} images`;
+        btn.dataset.color = color;
+        
+        // Set color based on the color name
+        const colorMap = {
+            'Red': '#f44336',
+            'Orange': '#ff9800',
+            'Yellow': '#ffeb3b',
+            'Green': '#4CAF50',
+            'Blue': '#2196F3',
+            'Purple': '#9c27b0',
+            'Pink': '#e91e63'
+        };
+        
+        btn.style.backgroundColor = colorMap[color] || '#999';
+        
+        // Check if this color is currently filtered
+        if (activeColorFilters.has(color)) {
+            btn.classList.add('active');
+        }
+        
+        btn.addEventListener('click', () => toggleMainColorFilter(color, btn));
+        filterContainer.appendChild(btn);
+    });
+    
+    updateFilterStatus();
+}
+
+function toggleMainColorFilter(color, button) {
+    if (activeColorFilters.has(color)) {
+        activeColorFilters.delete(color);
+        button.classList.remove('active');
+    } else {
+        activeColorFilters.add(color);
+        button.classList.add('active');
+    }
+    
+    // Apply the filter to the current view
+    applyMainColorFilter();
+    updateFilterStatus();
+}
+
+function updateFilterStatus() {
+    const status = document.getElementById('filterStatus');
+    if (status) {
+        if (activeColorFilters.size === 0) {
+            status.textContent = 'All images visible';
+            status.style.color = '#4CAF50';
+        } else {
+            const filteredColors = Array.from(activeColorFilters).join(', ');
+            status.textContent = `Hiding: ${filteredColors}`;
+            status.style.color = '#FF9800';
+        }
+    }
+}
+
+function applyMainColorFilter() {
+    // Get all image cards in the current view
+    const imageCards = document.querySelectorAll('.image-card');
+    
+    let visibleCount = 0;
+    
+    imageCards.forEach(card => {
+        // Find the color picker in this card
+        const colorPicker = card.querySelector('.color-picker');
+        if (!colorPicker) {
+            card.style.display = '';
+            visibleCount++;
+            return;
+        }
+        
+        // Find the selected color button
+        const selectedColorBtn = colorPicker.querySelector('.color-btn.selected');
+        const color = selectedColorBtn ? selectedColorBtn.getAttribute('data-color') : 'None';
+        
+        // Show/hide based on filter
+        if (activeColorFilters.has(color)) {
+            card.style.display = 'none';
+        } else {
+            card.style.display = '';
+            visibleCount++;
+        }
+    });
+    
+    // Update the image count in the header
+    const totalImages = imageCards.length;
+    
+    if (visibleCount < totalImages) {
+        const currentDisplay = document.getElementById('groupInfo');
+        if (currentDisplay) {
+            const originalText = currentDisplay.textContent.replace(/ \(\d+\/\d+ visible\)$/, '');
+            currentDisplay.textContent = `${originalText} (${visibleCount}/${totalImages} visible)`;
+        }
+    } else {
+        const currentDisplay = document.getElementById('groupInfo');
+        if (currentDisplay) {
+            const originalText = currentDisplay.textContent.replace(/ \(\d+\/\d+ visible\)$/, '');
+            currentDisplay.textContent = originalText;
+        }
+    }
+}
+
+function applyColorFilter() {
+    // Get all image cards in the current view
+    const imageCards = document.querySelectorAll('.image-card');
+    
+    imageCards.forEach(card => {
+        // Find the color picker in this card
+        const colorPicker = card.querySelector('.color-picker');
+        if (!colorPicker) return;
+        
+        // Find the selected color button
+        const selectedColorBtn = colorPicker.querySelector('.color-btn.selected');
+        const color = selectedColorBtn ? selectedColorBtn.getAttribute('data-color') : 'None';
+        
+        // Show/hide based on filter
+        if (activeColorFilters.has(color)) {
+            card.style.display = 'none';
+        } else {
+            card.style.display = '';
+        }
+    });
+    
+    // Update the image count in the header
+    const visibleImages = document.querySelectorAll('.image-card:not([style*="display: none"])');
+    const totalImages = document.querySelectorAll('.image-card');
+    
+    if (visibleImages.length < totalImages.length) {
+        const currentDisplay = document.getElementById('groupInfo');
+        if (currentDisplay) {
+            const originalText = currentDisplay.textContent;
+            if (!originalText.includes('(')) {
+                currentDisplay.textContent = `${originalText} (${visibleImages.length}/${totalImages.length} visible)`;
+            }
+        }
+    } else {
+        const currentDisplay = document.getElementById('groupInfo');
+        if (currentDisplay) {
+            const originalText = currentDisplay.textContent.replace(/ \(\d+\/\d+ visible\)$/, '');
+            currentDisplay.textContent = originalText;
+        }
+    }
+}
+
 async function applyNewThreshold() {
     if (isReclustering) {
         updateThresholdStatus('Re-clustering already in progress...', true);
@@ -551,6 +780,20 @@ function setupEventListeners() {
     }
     if (thresholdApplyBtn) {
         thresholdApplyBtn.onclick = applyNewThreshold;
+    }
+    
+    // Set up color filter clear buttons
+    const clearFilterBtn = document.getElementById('clearColorFilter');
+    if (clearFilterBtn) {
+        clearFilterBtn.onclick = clearColorFilter;
+    }
+    
+    const clearMainFilterBtn = document.getElementById('clearMainColorFilter');
+    if (clearMainFilterBtn) {
+        clearMainFilterBtn.onclick = () => {
+            clearColorFilter();
+            updateFilterStatus();
+        };
     }
 
     // Keyboard navigation
@@ -739,7 +982,9 @@ function openLightbox(imageIndex) {
     const lightbox = document.getElementById('lightbox');
     lightbox.classList.remove('hidden');
 
+    console.log('Opening lightbox, available colors:', availableColors);
     showLightboxImage();
+    createColorFilterUI(); // Initialize color filter UI
     setupLightboxEventListeners();
 }
 

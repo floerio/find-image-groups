@@ -29,6 +29,14 @@
                 <button id="thresholdApply" class="threshold-btn apply-btn" title="Re-cluster with new threshold">Apply</button>
                 <span id="thresholdStatus" class="threshold-status"></span>
             </div>
+            <div class="controls-right">
+                <div class="main-color-filter">
+                    <span class="filter-label">Filter:</span>
+                    <div class="filter-colors" id="mainColorFilter"></div>
+                    <button id="clearMainColorFilter" class="filter-clear-btn" title="Clear all filters">✕</button>
+                </div>
+                <span id="filterStatus" class="filter-status"></span>
+            </div>
             <div class="help">
                 Keyboard: ← → or A D to navigate | Q or ESC to close window
             </div>
@@ -82,6 +90,11 @@
                     <div class="lightbox-exif-header" id="lightboxExifHeader">
                         <!-- EXIF data will be inserted here -->
                     </div>
+                </div>
+                <div class="lightbox-color-filter">
+                    <span class="filter-label">Hide images with:</span>
+                    <div class="filter-colors" id="lightboxColorFilter"></div>
+                    <button id="clearColorFilter" class="filter-clear-btn" title="Show all images">✕ Clear</button>
                 </div>
                 <div class="lightbox-controls">
                     <button class="lightbox-btn" id="brightnessDown" title="Darker (,)">☀−</button>

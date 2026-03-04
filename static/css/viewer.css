@@ -37,10 +37,11 @@ h1 {
 
 .controls {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
-    gap: 2rem;
+    gap: 1rem;
     margin-bottom: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .grid-brightness-controls {
@@ -142,6 +143,30 @@ h1 {
     font-size: 0.9rem;
     margin-left: 1rem;
     min-width: 150px;
+    text-align: left;
+}
+
+.controls-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.main-color-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #262626;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid #404040;
+}
+
+.filter-status {
+    color: #4CAF50;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+    min-width: 80px;
     text-align: left;
 }
 
@@ -413,10 +438,89 @@ main {
     padding: 1rem 2rem;
     background: rgba(0, 0, 0, 0.5);
     border-bottom: 1px solid #404040;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .lightbox-header-left {
     display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.lightbox-color-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #262626;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    margin-left: auto;
+    border: 2px solid #FF9800;
+    min-height: 40px;
+    z-index: 10;
+    position: relative;
+}
+
+.filter-label {
+    color: #e0e0e0;
+    font-size: 0.8rem;
+    margin-right: 0.3rem;
+    font-weight: normal;
+}
+
+.filter-colors {
+    display: flex;
+    gap: 0.3rem;
+}
+
+.filter-color-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.filter-color-btn.active {
+    border-color: #4CAF50;
+    transform: scale(1.1);
+}
+
+.filter-color-btn::after {
+    content: '✕';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0;
+}
+
+.filter-color-btn.active::after {
+    opacity: 1;
+}
+
+.filter-clear-btn {
+    background: #404040;
+    color: #e0e0e0;
+    border: 1px solid #505050;
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+    min-width: 24px;
+}
+
+.filter-clear-btn:hover {
+    background: #f44336;
+    border-color: #f44336;
+}
     flex-direction: column;
     gap: 0.5rem;
 }

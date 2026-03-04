@@ -80,6 +80,7 @@ Both viewers display images in each group side-by-side and support keyboard navi
 - `-w, --web-viewer` - Launch web-based viewer (recommended - better UI and performance).
 - `-v, --viewer` - Launch matplotlib viewer (alternative, works offline).
 - `-p, --port` - Port for web viewer (default: 5000).
+- `--hash-method` - Hash method to use (average, phash, dhash, whash). Default: phash.
 - `--no-cache` - Disable hash caching (recompute all hashes).
 - `--no-parallel` - Disable parallel processing (slower but uses less memory).
 - `--show-ungrouped` - Show images that are not part of any similar group.
@@ -186,6 +187,23 @@ Group 2: 2 similar image(s)
 - **Range: 1-64** - Lower = more similar required, Higher = less similar required
 - **Status display** - Shows number of groups and ungrouped images after re-clustering
 - **No restart needed** - Fine-tune grouping without restarting the application
+
+**Color Filter (Main Grid):**
+- **Color filter buttons** - Click to hide images with specific color tags
+- **Multi-color filtering** - Filter by multiple colors simultaneously
+- **Visual feedback** - Filtered images disappear from grid instantly
+- **Clear filter button** - Reset to show all images
+- **Live count** - Shows visible/total images (e.g., "5/8 visible")
+- **Persistent filtering** - Filter stays active during navigation
+- **Use case**: Hide rejected images (e.g., Red) to focus on keepers
+- **Location**: Main interface, below threshold controls
+
+**Workflow Example:**
+1. Tag some images as Red (rejected) using keyboard shortcuts
+2. Click the Red filter button in main interface
+3. All Red-tagged images disappear from grid
+4. Focus only on unfiltered images for final selection
+5. Click "✕ Clear" when done to see all images again
 - **EXIF data displayed**: ISO, shutter speed, aperture, focal length, exposure compensation
 - **Brightness control**: Perfect for checking shadow detail and highlight clipping
 - Inspect fine details to choose between similar shots
@@ -247,6 +265,30 @@ python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
 - tqdm (progress bars)
 - flask (web server for hybrid viewer)
 - matplotlib (offline matplotlib viewer)
+
+## Hash Methods Explained
+
+**Different hash algorithms for different use cases:**
+
+- **`phash` (default)**: Perceptual hash - robust against lighting/color changes. Best for general similarity detection.
+- **`average`: Fastest method - good for exact duplicates. Less robust to image variations.
+- **`dhash`**: Difference hash - sensitive to horizontal gradients. Good for detecting resized versions.
+- **`whash`**: Wavelet hash - most robust but slower. Best for complex images with many details.
+
+**When to use which:**
+- **Exact duplicates**: `average` (fastest)
+- **Similar compositions**: `phash` (default, balanced)
+- **Resized versions**: `dhash` (gradient-sensitive)
+- **Complex scenes**: `whash` (most robust)
+
+**Example usage:**
+```bash
+# Use dhash for resized image detection
+python fuji_similarity.py /path/to/photos --hash-method dhash
+
+# Use whash for complex scenes
+python fuji_similarity.py /path/to/photos --hash-method whash --hash-size 16
+```
 
 ## Ungrouped Images Feature
 

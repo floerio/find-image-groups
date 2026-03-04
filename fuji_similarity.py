@@ -28,7 +28,7 @@ from web_viewer import WebViewer
 class ImageSimilarityFinder:
     """Find similar images in a collection of Fuji RAW files."""
 
-    def __init__(self, hash_size: int = 8, threshold: int = 10, use_cache: bool = True):
+    def __init__(self, hash_size: int = 8, threshold: int = 10, use_cache: bool = True, hash_method: str = "phash"):
         """
         Initialize the similarity finder.
 
@@ -36,10 +36,12 @@ class ImageSimilarityFinder:
             hash_size: Size of the perceptual hash (larger = more precise)
             threshold: Hamming distance threshold (lower = more similar required)
             use_cache: Whether to use hash caching
+            hash_method: Hash method to use (average, phash, dhash, whash)
         """
         self.hash_size = hash_size
         self.threshold = threshold
         self.use_cache = use_cache
+        self.hash_method = hash_method
         self.image_hashes: Dict[str, imagehash.ImageHash] = {}
         self.cache_file = None
 
@@ -73,8 +75,18 @@ class ImageSimilarityFinder:
         Returns:
             Perceptual hash
         """
-        # Using average hash - fast and effective for similarity detection
-        return imagehash.average_hash(image, hash_size=self.hash_size)
+        # Use the selected hash method
+        if self.hash_method == "average":
+            return imagehash.average_hash(image, hash_size=self.hash_size)
+        elif self.hash_method == "phash":
+            return imagehash.phash(image, hash_size=self.hash_size)
+        elif self.hash_method == "dhash":
+            return imagehash.dhash(image, hash_size=self.hash_size)
+        elif self.hash_method == "whash":
+            return imagehash.whash(image, hash_size=self.hash_size)
+        else:
+            # Default to phash if unknown method
+            return imagehash.phash(image, hash_size=self.hash_size)
 
     def get_file_signature(self, filepath: Path) -> str:
         """
@@ -315,26 +327,43 @@ class ImageSimilarityFinder:
         for path1, path2, distance in similar_pairs:
             union(path1, path2)
 
+        # Group ALL images by their root (not just those in similar_pairs)
+        # First, ensure all images are in the parent dictionary
+        all_images = set()
+        for path1, path2, distance in similar_pairs:
+            all_images.add(path1)
+            all_images.add(path2)
+        
+        # Initialize parent for all images
+        for img_path in all_images:
+            find(img_path)  # This ensures the image is in the parent dict
+
         # Group images by their root
         clusters_dict = {}
-        for path1, path2, distance in similar_pairs:
-            root = find(path1)
+        for img_path in all_images:
+            root = find(img_path)
             if root not in clusters_dict:
                 clusters_dict[root] = {
                     'images': set(),
                     'pairs': []
                 }
-            clusters_dict[root]['images'].add(path1)
-            clusters_dict[root]['images'].add(path2)
-            clusters_dict[root]['pairs'].append((path1, path2, distance))
+            clusters_dict[root]['images'].add(img_path)
+
+        # Add the similar pairs to each cluster
+        for path1, path2, distance in similar_pairs:
+            root = find(path1)
+            if root in clusters_dict:
+                clusters_dict[root]['pairs'].append((path1, path2, distance))
 
         # Convert to list and sort by cluster size
         clusters = []
         for root, data in clusters_dict.items():
-            clusters.append({
-                'images': sorted(list(data['images'])),
-                'pairs': sorted(data['pairs'], key=lambda x: x[2])
-            })
+            # Only include clusters with multiple images (actual groups)
+            if len(data['images']) > 1:
+                clusters.append({
+                    'images': sorted(list(data['images'])),
+                    'pairs': sorted(data['pairs'], key=lambda x: x[2])
+                })
 
         # Sort clusters by size (largest first)
         clusters.sort(key=lambda x: len(x['images']), reverse=True)
@@ -735,6 +764,13 @@ Examples:
         help="Show images that are not part of any similar group"
     )
 
+    parser.add_argument(
+        "--hash-method",
+        choices=["average", "phash", "dhash", "whash"],
+        default="phash",
+        help="Hash method to use (average, phash, dhash, whash). Default: phash"
+    )
+
     args = parser.parse_args()
 
     # Validate directory
@@ -750,7 +786,8 @@ Examples:
     finder = ImageSimilarityFinder(
         hash_size=args.hash_size,
         threshold=args.threshold,
-        use_cache=not args.no_cache
+        use_cache=not args.no_cache,
+        hash_method=args.hash_method
     )
 
     finder.process_directory(args.directory, parallel=not args.no_parallel)
