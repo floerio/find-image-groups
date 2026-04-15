@@ -3,7 +3,10 @@
     "allow": [
       "Bash(curl -s http://localhost:5020/api/ungrouped)",
       "Bash(node --check /Users/ofloericke/Projects/find-image-groups/static/js/viewer.js)",
-      "Bash(pkill -f \"python.*fuji_similarity.*web-viewer\")"
+      "Bash(pkill -f \"python.*fuji_similarity.*web-viewer\")",
+      "Bash(curl -s http://localhost:5021/api/all-images)",
+      "Bash(curl -I http://localhost:5021/api/all-images/0)",
+      "Bash(curl -s http://localhost:5021/api/all-images/0)"
     ],
     "additionalDirectories": [
       "/Users/ofloericke/.claude/plans"

@@ -5,6 +5,8 @@ Provides a fast, interactive browser-based interface.
 Supports RAW and standard image formats.
 """
 
+import os
+import io
 import json
 import base64
 import webbrowser
@@ -383,6 +385,134 @@ class WebViewer:
             image_path = self.ungrouped_images[image_id]
             success = self.write_color_tag(image_path, color)
             
+            if success:
+                return jsonify({'success': True, 'color': color})
+            else:
+                return jsonify({'error': 'Failed to write XMP'}), 500
+
+        @self.app.route('/api/all-images')
+        def get_all_images():
+            """Get all images with metadata for Browse All mode."""
+            all_images = []
+
+            # Collect from clusters
+            for cluster_idx, cluster in enumerate(self.clusters):
+                for img_path in cluster['images']:
+                    # Extract creation date for sorting
+                    exif = self.get_exif_data(img_path)
+                    creation_date = exif.get('datetime', '')
+
+                    all_images.append({
+                        'path': img_path,
+                        'filename': os.path.basename(img_path),
+                        'color': self.read_color_tag(img_path),
+                        'creation_date': creation_date
+                    })
+
+            # Collect ungrouped if available
+            if self.show_ungrouped:
+                for img_path in self.ungrouped_images:
+                    exif = self.get_exif_data(img_path)
+                    creation_date = exif.get('datetime', '')
+
+                    all_images.append({
+                        'path': img_path,
+                        'filename': os.path.basename(img_path),
+                        'color': self.read_color_tag(img_path),
+                        'creation_date': creation_date
+                    })
+
+            return jsonify(all_images)
+
+        @self.app.route('/api/all-images/<int:image_id>')
+        def get_all_image(image_id):
+            """Serve an image for Browse All mode as JPEG."""
+            # Build all_images list
+            all_images_paths = []
+            for cluster in self.clusters:
+                all_images_paths.extend(cluster['images'])
+            if self.show_ungrouped:
+                all_images_paths.extend(self.ungrouped_images)
+
+            if image_id >= len(all_images_paths):
+                return "Image not found", 404
+
+            image_path = all_images_paths[image_id]
+
+            # Check cache first
+            cache_key = f"all_{image_id}"
+            if cache_key in self.image_cache:
+                buffered = self.image_cache[cache_key]
+                buffered.seek(0)
+                return send_file(buffered, mimetype='image/jpeg')
+
+            # Load and process image
+            try:
+                img = self.finder.load_image_file(Path(image_path))
+
+                # Resize for web display (max 1920px wide)
+                max_width = 1920
+                if img.width > max_width:
+                    ratio = max_width / img.width
+                    new_size = (max_width, int(img.height * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+                # Convert to JPEG and cache
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG", quality=90)
+                buffered.seek(0)
+
+                # Store in cache
+                self.image_cache[cache_key] = buffered
+
+                # Create a copy for response
+                response_buffer = io.BytesIO(buffered.getvalue())
+                return send_file(response_buffer, mimetype='image/jpeg')
+
+            except Exception as e:
+                print(f"Error loading image: {e}")
+                return f"Error loading image: {e}", 500
+
+        @self.app.route('/api/all-images/exif/<int:image_id>')
+        def get_all_image_exif(image_id):
+            """Get EXIF data for image in Browse All mode."""
+            # Build all_images list
+            all_images_paths = []
+            for cluster in self.clusters:
+                all_images_paths.extend(cluster['images'])
+            if self.show_ungrouped:
+                all_images_paths.extend(self.ungrouped_images)
+
+            if image_id >= len(all_images_paths):
+                return jsonify({'error': 'Image not found'}), 404
+
+            image_path = all_images_paths[image_id]
+            exif_data = self.get_exif_data(image_path)
+
+            return jsonify(exif_data)
+
+        @self.app.route('/api/all-images/color/<int:image_id>', methods=['POST'])
+        def set_all_image_color(image_id):
+            """Set color tag for image in Browse All mode."""
+            # Build all_images list
+            all_images_paths = []
+            for cluster in self.clusters:
+                all_images_paths.extend(cluster['images'])
+            if self.show_ungrouped:
+                all_images_paths.extend(self.ungrouped_images)
+
+            if image_id >= len(all_images_paths):
+                return jsonify({'error': 'Image not found'}), 404
+
+            data = request.get_json()
+            color = data.get('color')
+
+            if color not in self.COLORS:
+                return jsonify({'error': 'Invalid color'}), 400
+
+            image_path = all_images_paths[image_id]
+            success = self.write_color_tag(image_path, color)
+
             if success:
                 return jsonify({'success': True, 'color': color})
             else:

@@ -10,10 +10,35 @@
     <div class="container">
         <header>
             <h1>Find Image Groups</h1>
-            <div class="controls">
+
+            <!-- Mode toggle -->
+            <div class="mode-toggle">
+                <button id="groupsModeBtn" class="mode-btn active">Show Groups</button>
+                <button id="browseModeBtn" class="mode-btn">Browse All</button>
+            </div>
+
+            <!-- Groups mode navigation (shown when viewMode === 'groups') -->
+            <div id="groupsNav" class="controls nav-section">
                 <button id="prevBtn" class="nav-btn">← Previous</button>
                 <span id="groupInfo">Loading...</span>
                 <button id="nextBtn" class="nav-btn">Next →</button>
+            </div>
+
+            <!-- Browse All mode navigation (shown when viewMode === 'browse') -->
+            <div id="browseNav" class="nav-section" style="display: none;">
+                <div class="controls">
+                    <button id="browsePrevBtn" class="nav-btn">← Previous</button>
+                    <span id="browsePageInfo">Page 1 of 1</span>
+                    <button id="browseNextBtn" class="nav-btn">Next →</button>
+                </div>
+                <div class="browse-pagination-controls">
+                    <select id="imagesPerPageSelect" class="browse-control">
+                        <option value="10">10 per page</option>
+                        <option value="20" selected>20 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="all">All images</option>
+                    </select>
+                </div>
             </div>
             <div class="grid-brightness-controls">
                 <button id="gridBrightnessDown" class="brightness-btn" title="Darker (Y)">☀−</button>
@@ -21,7 +46,10 @@
                 <button id="gridBrightnessUp" class="brightness-btn" title="Brighter (X)">☀+</button>
                 <button id="gridBrightnessReset" class="brightness-btn" title="Reset (Space)">☀↻</button>
             </div>
-            <div class="threshold-controls">
+
+            <!-- Groups mode controls (only visible in groups mode) -->
+            <div id="groupsControls" class="groups-controls">
+                <div class="threshold-controls">
                 <span class="threshold-label">Similarity Threshold:</span>
                 <div class="threshold-radio-group">
                     <label class="threshold-radio">
@@ -131,14 +159,42 @@
                 </label>
                 <button id="thresholdApply" class="threshold-btn apply-btn" title="Re-cluster with new threshold">Apply</button>
                 <span id="thresholdStatus" class="threshold-status"></span>
-            </div>
-            <div class="controls-right">
-                <div class="main-color-filter">
-                    <span class="filter-label">Filter:</span>
-                    <div class="filter-colors" id="mainColorFilter"></div>
-                    <button id="clearMainColorFilter" class="filter-clear-btn" title="Clear all filters">✕</button>
                 </div>
-                <span id="filterStatus" class="filter-status"></span>
+            </div>
+
+            <!-- Browse All mode controls (only visible in browse mode) -->
+            <div id="browseControls" class="browse-controls" style="display: none;">
+                <div class="control-group">
+                    <label>Sort by:</label>
+                    <select id="sortBySelect" class="browse-control">
+                        <option value="date" selected>Creation Date</option>
+                        <option value="name">File Name</option>
+                    </select>
+                    <button id="sortOrderBtn" class="browse-control" title="Toggle sort order">
+                        ↑ Ascending
+                    </button>
+                </div>
+
+                <!-- EXIF Filters Placeholder -->
+                <div class="control-group exif-filters-placeholder">
+                    <label>Filters:</label>
+                    <span class="placeholder-text">(EXIF filters will be added here)</span>
+                </div>
+            </div>
+
+            <div class="controls-right">
+                <div class="color-filter-section">
+                    <label class="filter-label">Color Filter:</label>
+                    <div class="filter-buttons">
+                        <button id="showAllFilterBtn" class="filter-btn show-all-btn active">
+                            Show All
+                        </button>
+                        <div id="mainColorFilter" class="main-color-filter">
+                            <!-- Color buttons will be created dynamically -->
+                        </div>
+                    </div>
+                    <div id="filterStatus" class="filter-status"></div>
+                </div>
                 <button id="toggleSimilarities" class="toggle-similarities-btn" title="Show/Hide similarity details">
                     Show Details
                 </button>

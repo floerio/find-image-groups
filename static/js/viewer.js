@@ -9,9 +9,36 @@ let showUngrouped = false;
 let gridBrightness = 100; // Global brightness for grid view
 let currentThreshold = 0.85; // Current similarity threshold
 let isReclustering = false; // Flag to prevent multiple simultaneous re-clustering
-let activeColorFilters = new Set(); // Track which colors are being filtered out
+
+// Color filter state (updated logic)
+let colorFilterMode = 'all';          // 'all' or 'selective'
+let selectedColorFilters = new Set(); // Colors to SHOW (not hide)
+
+// View mode state
+let viewMode = 'groups';  // 'groups' or 'browse'
+
+// Browse All mode state
+let allImages = [];                    // All images for Browse All
+let browseCurrentPage = 0;             // Current page in Browse All
+let browseImagesPerPage = 20;          // Images per page (10/20/50/all)
+let browseSortBy = 'date';             // 'name' or 'date'
+let browseSortAscending = true;        // Sort direction
+let browseFilteredImages = [];         // After applying color filter
+
+// State preservation for mode toggling
+let savedGroupsState = {
+    currentCluster: 0,
+    focusedImageIndex: 0
+};
+let savedBrowseState = {
+    currentPage: 0,
+    imagesPerPage: 20,
+    sortBy: 'date',
+    sortAscending: true
+};
 
 // Lightbox state
+let lightboxViewMode = 'groups'; // 'groups' or 'browse' - track which mode lightbox was opened from
 let lightboxOpen = false;
 let lightboxImageIndex = 0;
 let zoomLevel = 1;
@@ -35,21 +62,29 @@ const nextBtn = document.getElementById('nextBtn');
 // Initialize
 async function init() {
     try {
-        // Load colors, clusters, ungrouped images, and config in parallel
-        const [colorsResponse, clustersResponse, ungroupedResponse, configResponse] = await Promise.all([
+        // Load colors, clusters, ungrouped images, all images, and config in parallel
+        const [colorsResponse, clustersResponse, ungroupedResponse, allImagesResponse, configResponse] = await Promise.all([
             fetch('/api/colors'),
             fetch('/api/clusters'),
             fetch('/api/ungrouped'),
+            fetch('/api/all-images'),
             fetch('/api/config')
         ]);
 
-        if (!colorsResponse.ok || !clustersResponse.ok || !ungroupedResponse.ok || !configResponse.ok) {
+        if (!colorsResponse.ok || !clustersResponse.ok || !ungroupedResponse.ok || !allImagesResponse.ok || !configResponse.ok) {
             throw new Error('Failed to load data');
         }
 
         availableColors = await colorsResponse.json();
         clusters = await clustersResponse.json();
         ungroupedImages = await ungroupedResponse.json();
+        allImages = await allImagesResponse.json();
+
+        // Add index to each image for API calls
+        allImages.forEach((img, idx) => {
+            img.index = idx;
+        });
+
         const config = await configResponse.json();
 
         // Set initial UI state from config
@@ -396,6 +431,385 @@ function getTotalGroups() {
     return total;
 }
 
+// ===== MODE TOGGLE FUNCTIONS =====
+
+function switchToGroupsMode() {
+    if (viewMode === 'browse') {
+        // Save Browse state
+        savedBrowseState = {
+            currentPage: browseCurrentPage,
+            imagesPerPage: browseImagesPerPage,
+            sortBy: browseSortBy,
+            sortAscending: browseSortAscending
+        };
+    }
+
+    viewMode = 'groups';
+
+    // Update UI
+    document.getElementById('groupsModeBtn').classList.add('active');
+    document.getElementById('browseModeBtn').classList.remove('active');
+    document.getElementById('groupsNav').style.display = '';
+    document.getElementById('browseNav').style.display = 'none';
+    document.getElementById('groupsControls').style.display = '';
+    document.getElementById('browseControls').style.display = 'none';
+
+    // Show "Show Details" button in groups mode
+    const toggleSimilaritiesBtn = document.getElementById('toggleSimilarities');
+    if (toggleSimilaritiesBtn) {
+        toggleSimilaritiesBtn.style.display = '';
+    }
+
+    // Restore Groups state
+    currentCluster = savedGroupsState.currentCluster;
+    focusedImageIndex = savedGroupsState.focusedImageIndex;
+
+    // Show current cluster
+    showCluster(currentCluster);
+}
+
+function switchToBrowseMode() {
+    if (viewMode === 'groups') {
+        // Save Groups state
+        savedGroupsState = {
+            currentCluster: currentCluster,
+            focusedImageIndex: focusedImageIndex
+        };
+    }
+
+    viewMode = 'browse';
+
+    // Update UI
+    document.getElementById('browseModeBtn').classList.add('active');
+    document.getElementById('groupsModeBtn').classList.remove('active');
+    document.getElementById('browseNav').style.display = '';
+    document.getElementById('groupsNav').style.display = 'none';
+    document.getElementById('browseControls').style.display = '';
+    document.getElementById('groupsControls').style.display = 'none';
+
+    // Hide "Show Details" button in browse mode (no similarities to show)
+    const toggleSimilaritiesBtn = document.getElementById('toggleSimilarities');
+    if (toggleSimilaritiesBtn) {
+        toggleSimilaritiesBtn.style.display = 'none';
+    }
+
+    // Restore Browse state
+    browseCurrentPage = savedBrowseState.currentPage;
+    browseImagesPerPage = savedBrowseState.imagesPerPage;
+    browseSortBy = savedBrowseState.sortBy;
+    browseSortAscending = savedBrowseState.sortAscending;
+
+    // Update UI controls
+    document.getElementById('imagesPerPageSelect').value =
+        browseImagesPerPage === -1 ? 'all' : browseImagesPerPage;
+    document.getElementById('sortBySelect').value = browseSortBy;
+    updateSortOrderButton();
+
+    // Show current page
+    showBrowsePage(browseCurrentPage);
+}
+
+// ===== BROWSE ALL MODE FUNCTIONS =====
+
+function sortAllImages() {
+    let sorted = [...allImages];
+
+    if (browseSortBy === 'name') {
+        sorted.sort((a, b) => a.filename.localeCompare(b.filename));
+    } else if (browseSortBy === 'date') {
+        // Sort by EXIF creation date
+        sorted.sort((a, b) => {
+            return a.creation_date.localeCompare(b.creation_date);
+        });
+    }
+
+    if (!browseSortAscending) {
+        sorted.reverse();
+    }
+
+    return sorted;
+}
+
+function applyBrowseColorFilter() {
+    const sorted = sortAllImages();
+
+    if (colorFilterMode === 'all') {
+        browseFilteredImages = sorted;
+    } else {
+        // Show only selected colors
+        browseFilteredImages = sorted.filter(img => {
+            const color = img.color || 'None';
+            return selectedColorFilters.has(color);
+        });
+    }
+}
+
+function showBrowsePage(pageIndex) {
+    applyBrowseColorFilter();
+
+    const totalImages = browseFilteredImages.length;
+    const perPage = browseImagesPerPage === -1 ? totalImages : browseImagesPerPage;
+    const totalPages = perPage === 0 ? 1 : Math.ceil(totalImages / perPage);
+
+    // Clamp page index
+    browseCurrentPage = Math.max(0, Math.min(pageIndex, totalPages - 1));
+
+    // Calculate slice
+    const startIdx = browseCurrentPage * perPage;
+    const endIdx = browseImagesPerPage === -1 ? totalImages : startIdx + perPage;
+    const pageImages = browseFilteredImages.slice(startIdx, endIdx);
+
+    // Update header
+    document.getElementById('browsePageInfo').textContent =
+        `Page ${browseCurrentPage + 1} of ${totalPages} (${pageImages.length}/${totalImages} images)`;
+
+    // Render grid
+    imageGrid.innerHTML = '';
+
+    pageImages.forEach((img, idx) => {
+        const globalIdx = startIdx + idx;
+        const card = createBrowseImageCard(img, globalIdx);
+        imageGrid.appendChild(card);
+    });
+
+    // Reset focus (browse mode doesn't use focus highlighting)
+    focusedImageIndex = 0;
+
+    // Hide similarities section in browse mode
+    if (similarityList) {
+        similarityList.classList.remove('visible');
+    }
+}
+
+function createBrowseImageCard(img, displayIdx) {
+    const card = document.createElement('div');
+    card.className = 'image-card';
+    card.dataset.imageIndex = displayIdx;
+
+    // Image wrapper with click for lightbox
+    const wrapper = document.createElement('div');
+    wrapper.className = 'image-wrapper';
+    wrapper.style.cursor = 'pointer';
+    wrapper.title = 'Click to zoom';
+
+    wrapper.addEventListener('click', () => {
+        openBrowseLightbox(displayIdx);  // Use display index for lightbox
+    });
+
+    // Image element
+    const imgElem = document.createElement('img');
+    imgElem.src = `/api/all-images/${img.index}`;  // Use original index
+    imgElem.alt = img.filename;
+    imgElem.loading = 'lazy';
+    imgElem.style.filter = `brightness(${gridBrightness}%)`;
+
+    wrapper.appendChild(imgElem);
+
+    // Filename
+    const filename = document.createElement('div');
+    filename.className = 'image-filename';
+    filename.textContent = img.filename;
+
+    // Create color picker manually for browse mode
+    const colorPicker = document.createElement('div');
+    colorPicker.className = 'color-picker';
+
+    const label = document.createElement('span');
+    label.className = 'color-picker-label';
+    label.textContent = 'Tag:';
+    colorPicker.appendChild(label);
+
+    availableColors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn';
+        btn.setAttribute('data-color', color);
+        btn.title = color;
+
+        // Set selected state
+        if (img.color === color || (color === 'None' && !img.color)) {
+            btn.classList.add('selected');
+        }
+
+        // Click handler for browse mode
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();  // Prevent lightbox from opening
+
+            const response = await fetch(`/api/all-images/color/${img.index}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ color: color })
+            });
+
+            if (response.ok) {
+                // Update UI
+                const buttons = colorPicker.querySelectorAll('.color-btn');
+                buttons.forEach(b => {
+                    if (b.getAttribute('data-color') === color) {
+                        b.classList.add('selected');
+                    } else {
+                        b.classList.remove('selected');
+                    }
+                });
+
+                // Update data
+                img.color = color === 'None' ? null : color;
+                allImages[img.index].color = color === 'None' ? null : color;
+
+                // Refresh if filter active
+                if (colorFilterMode === 'selective') {
+                    showBrowsePage(browseCurrentPage);
+                }
+            }
+        });
+
+        colorPicker.appendChild(btn);
+    });
+
+    card.appendChild(wrapper);
+    card.appendChild(filename);
+    card.appendChild(colorPicker);
+
+    return card;
+}
+
+function nextBrowsePage() {
+    const totalImages = browseFilteredImages.length;
+    const perPage = browseImagesPerPage === -1 ? totalImages : browseImagesPerPage;
+    const totalPages = perPage === 0 ? 1 : Math.ceil(totalImages / perPage);
+
+    browseCurrentPage = (browseCurrentPage + 1) % totalPages;
+    showBrowsePage(browseCurrentPage);
+}
+
+function prevBrowsePage() {
+    const totalImages = browseFilteredImages.length;
+    const perPage = browseImagesPerPage === -1 ? totalImages : browseImagesPerPage;
+    const totalPages = perPage === 0 ? 1 : Math.ceil(totalImages / perPage);
+
+    browseCurrentPage = (browseCurrentPage - 1 + totalPages) % totalPages;
+    showBrowsePage(browseCurrentPage);
+}
+
+function updateSortOrderButton() {
+    const btn = document.getElementById('sortOrderBtn');
+    if (btn) {
+        btn.textContent = browseSortAscending ? '↑ Ascending' : '↓ Descending';
+    }
+}
+
+// ===== BROWSE ALL LIGHTBOX FUNCTIONS =====
+
+function openBrowseLightbox(imageIndex) {
+    lightboxOpen = true;
+    lightboxImageIndex = imageIndex;
+    lightboxViewMode = 'browse';
+    zoomLevel = 1;
+    brightnessLevel = 100;
+    panOffsetX = 0;
+    panOffsetY = 0;
+
+    showBrowseLightboxImage();
+
+    const overlay = document.getElementById('lightboxOverlay');
+    overlay.style.display = 'flex';
+}
+
+async function showBrowseLightboxImage() {
+    const img = browseFilteredImages[lightboxImageIndex];
+
+    // Update image
+    const lightboxImg = document.getElementById('lightboxImage');
+    lightboxImg.src = `/api/all-images/${img.index}`;  // Use original index
+
+    // Update filename
+    const lightboxFilename = document.getElementById('lightboxFilename');
+    if (lightboxFilename) {
+        lightboxFilename.textContent = img.filename;
+    }
+
+    // Fetch and display EXIF
+    try {
+        const exifResponse = await fetch(`/api/all-images/exif/${img.index}`);  // Use original index
+        if (exifResponse.ok) {
+            const exif = await exifResponse.json();
+            const exifHeaderElem = document.getElementById('lightboxExifHeader');
+            const exifFooterElem = document.getElementById('lightboxExifFooter');
+            if (exifHeaderElem && exifFooterElem) {
+                displayExifData(exif, exifHeaderElem, exifFooterElem);
+            }
+        }
+    } catch (err) {
+        console.error('Error loading EXIF:', err);
+    }
+
+    // Update color picker in lightbox
+    updateLightboxColorPicker(img.color, img.index);  // Use original index
+
+    // Update image with zoom and brightness
+    lightboxImg.style.transform = `scale(${zoomLevel}) translate(${panOffsetX}px, ${panOffsetY}px)`;
+    lightboxImg.style.filter = `brightness(${brightnessLevel}%)`;
+
+    // Update zoom and brightness displays
+    const zoomDisplay = document.querySelector('.lightbox-zoom-level');
+    const brightnessDisplay = document.querySelector('.lightbox-brightness-level');
+    if (zoomDisplay) zoomDisplay.textContent = `${Math.round(zoomLevel * 100)}%`;
+    if (brightnessDisplay) brightnessDisplay.textContent = `${brightnessLevel}%`;
+}
+
+function updateLightboxColorPicker(currentColor, originalImageIdx) {
+    const lightboxColorPicker = document.getElementById('lightboxColorPicker');
+    if (!lightboxColorPicker) return;
+
+    // Clear existing picker
+    lightboxColorPicker.innerHTML = '';
+
+    // Create color picker manually for browse mode lightbox
+    const picker = document.createElement('div');
+    picker.className = 'color-picker';
+
+    const label = document.createElement('span');
+    label.className = 'color-picker-label';
+    label.textContent = 'Tag:';
+    picker.appendChild(label);
+
+    availableColors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn';
+        btn.setAttribute('data-color', color);
+        btn.title = color;
+
+        // Set selected state
+        if (currentColor === color || (color === 'None' && !currentColor)) {
+            btn.classList.add('selected');
+        }
+
+        // Click handler for browse mode lightbox
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            const response = await fetch(`/api/all-images/color/${originalImageIdx}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ color: color })
+            });
+
+            if (response.ok) {
+                // Update allImages array
+                allImages[originalImageIdx].color = color === 'None' ? null : color;
+                // Update current image in browseFilteredImages
+                browseFilteredImages[lightboxImageIndex].color = color === 'None' ? null : color;
+                // Update picker display
+                updateLightboxColorPicker(color === 'None' ? null : color, originalImageIdx);
+            }
+        });
+
+        picker.appendChild(btn);
+    });
+
+    lightboxColorPicker.appendChild(picker);
+}
+
 // Set focus to an image
 function focusImage(index) {
     const isUngrouped = currentCluster >= clusters.length;
@@ -526,20 +940,20 @@ function createMainColorFilter() {
         console.log('Main color filter container not found');
         return;
     }
-    
+
     filterContainer.innerHTML = '';
-    
+
     // Create color filter buttons for each color (except "None")
     const filterableColors = availableColors.filter(color => color !== 'None');
-    
+
     console.log('Creating main color filter with colors:', filterableColors);
-    
+
     filterableColors.forEach(color => {
         const btn = document.createElement('button');
         btn.className = 'filter-color-btn';
-        btn.title = `Hide ${color} images`;
+        btn.title = `Show only ${color}`;
         btn.dataset.color = color;
-        
+
         // Set color based on the color name
         const colorMap = {
             'Red': '#f44336',
@@ -550,136 +964,125 @@ function createMainColorFilter() {
             'Purple': '#9c27b0',
             'Pink': '#e91e63'
         };
-        
+
         btn.style.backgroundColor = colorMap[color] || '#999';
-        
-        // Check if this color is currently filtered
-        if (activeColorFilters.has(color)) {
-            btn.classList.add('active');
-        }
-        
-        btn.addEventListener('click', () => toggleMainColorFilter(color, btn));
+
+        btn.addEventListener('click', () => toggleSelectiveColorFilter(color));
         filterContainer.appendChild(btn);
     });
-    
+
+    updateColorFilterButtons();
     updateFilterStatus();
 }
 
-function toggleMainColorFilter(color, button) {
-    if (activeColorFilters.has(color)) {
-        activeColorFilters.delete(color);
-        button.classList.remove('active');
-    } else {
-        activeColorFilters.add(color);
-        button.classList.add('active');
+function toggleSelectiveColorFilter(color) {
+    // Deactivate "Show All"
+    colorFilterMode = 'selective';
+    const showAllBtn = document.getElementById('showAllFilterBtn');
+    if (showAllBtn) {
+        showAllBtn.classList.remove('active');
     }
-    
-    // Apply the filter to the current view
-    applyMainColorFilter();
-    updateFilterStatus();
+
+    // Toggle color selection
+    if (selectedColorFilters.has(color)) {
+        selectedColorFilters.delete(color);
+    } else {
+        selectedColorFilters.add(color);
+    }
+
+    // If no colors selected, revert to "Show All"
+    if (selectedColorFilters.size === 0) {
+        activateShowAll();
+        return;
+    }
+
+    // Update button states
+    updateColorFilterButtons();
+
+    // Apply filter
+    applyColorFilter();
+}
+
+function activateShowAll() {
+    colorFilterMode = 'all';
+    selectedColorFilters.clear();
+    const showAllBtn = document.getElementById('showAllFilterBtn');
+    if (showAllBtn) {
+        showAllBtn.classList.add('active');
+    }
+    updateColorFilterButtons();
+    applyColorFilter();
+}
+
+function updateColorFilterButtons() {
+    const buttons = document.querySelectorAll('.filter-color-btn');
+    buttons.forEach(btn => {
+        const color = btn.getAttribute('data-color');
+        if (selectedColorFilters.has(color)) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
 }
 
 function updateFilterStatus() {
     const status = document.getElementById('filterStatus');
-    if (status) {
-        if (activeColorFilters.size === 0) {
-            status.textContent = 'All images visible';
-            status.style.color = '#4CAF50';
-        } else {
-            const filteredColors = Array.from(activeColorFilters).join(', ');
-            status.textContent = `Hiding: ${filteredColors}`;
-            status.style.color = '#FF9800';
-        }
-    }
-}
+    if (!status) return;
 
-function applyMainColorFilter() {
-    // Get all image cards in the current view
-    const imageCards = document.querySelectorAll('.image-card');
-    
-    let visibleCount = 0;
-    
-    imageCards.forEach(card => {
-        // Find the color picker in this card
-        const colorPicker = card.querySelector('.color-picker');
-        if (!colorPicker) {
-            card.style.display = '';
-            visibleCount++;
-            return;
-        }
-        
-        // Find the selected color button
-        const selectedColorBtn = colorPicker.querySelector('.color-btn.selected');
-        const color = selectedColorBtn ? selectedColorBtn.getAttribute('data-color') : 'None';
-        
-        // Show/hide based on filter
-        if (activeColorFilters.has(color)) {
-            card.style.display = 'none';
-        } else {
-            card.style.display = '';
-            visibleCount++;
-        }
-    });
-    
-    // Update the image count in the header
-    const totalImages = imageCards.length;
-    
-    if (visibleCount < totalImages) {
-        const currentDisplay = document.getElementById('groupInfo');
-        if (currentDisplay) {
-            const originalText = currentDisplay.textContent.replace(/ \(\d+\/\d+ visible\)$/, '');
-            currentDisplay.textContent = `${originalText} (${visibleCount}/${totalImages} visible)`;
-        }
+    if (colorFilterMode === 'all') {
+        status.textContent = 'Showing all images';
+        status.style.color = '#4CAF50';
     } else {
-        const currentDisplay = document.getElementById('groupInfo');
-        if (currentDisplay) {
-            const originalText = currentDisplay.textContent.replace(/ \(\d+\/\d+ visible\)$/, '');
-            currentDisplay.textContent = originalText;
-        }
+        const colors = Array.from(selectedColorFilters).join(', ');
+        const count = viewMode === 'groups'
+            ? document.querySelectorAll('.image-card:not([style*="display: none"])').length
+            : browseFilteredImages.length;
+        status.textContent = `Showing ${colors} (${count} images)`;
+        status.style.color = '#FF9800';
     }
 }
 
 function applyColorFilter() {
-    // Get all image cards in the current view
-    const imageCards = document.querySelectorAll('.image-card');
-    
-    imageCards.forEach(card => {
-        // Find the color picker in this card
-        const colorPicker = card.querySelector('.color-picker');
-        if (!colorPicker) return;
-        
-        // Find the selected color button
-        const selectedColorBtn = colorPicker.querySelector('.color-btn.selected');
-        const color = selectedColorBtn ? selectedColorBtn.getAttribute('data-color') : 'None';
-        
-        // Show/hide based on filter
-        if (activeColorFilters.has(color)) {
-            card.style.display = 'none';
-        } else {
-            card.style.display = '';
-        }
-    });
-    
-    // Update the image count in the header
-    const visibleImages = document.querySelectorAll('.image-card:not([style*="display: none"])');
-    const totalImages = document.querySelectorAll('.image-card');
-    
-    if (visibleImages.length < totalImages.length) {
-        const currentDisplay = document.getElementById('groupInfo');
-        if (currentDisplay) {
-            const originalText = currentDisplay.textContent;
-            if (!originalText.includes('(')) {
-                currentDisplay.textContent = `${originalText} (${visibleImages.length}/${totalImages.length} visible)`;
-            }
-        }
+    if (viewMode === 'groups') {
+        applyGroupsColorFilter();
     } else {
-        const currentDisplay = document.getElementById('groupInfo');
-        if (currentDisplay) {
-            const originalText = currentDisplay.textContent.replace(/ \(\d+\/\d+ visible\)$/, '');
-            currentDisplay.textContent = originalText;
-        }
+        // Re-render browse page with new filter
+        showBrowsePage(browseCurrentPage);
+    }
+
+    updateFilterStatus();
+}
+
+function applyGroupsColorFilter() {
+    const imageCards = document.querySelectorAll('.image-card');
+
+    if (colorFilterMode === 'all') {
+        // Show all images
+        imageCards.forEach(card => {
+            card.style.display = '';
+        });
+    } else {
+        // Show only selected colors
+        imageCards.forEach(card => {
+            const colorPicker = card.querySelector('.color-picker');
+            if (!colorPicker) {
+                card.style.display = 'none';
+                return;
+            }
+
+            const selectedBtn = colorPicker.querySelector('.color-btn.selected');
+            const imageColor = selectedBtn ? selectedBtn.getAttribute('data-color') : 'None';
+
+            if (selectedColorFilters.has(imageColor)) {
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
+        });
     }
 }
+
 
 async function applyNewThreshold() {
     if (isReclustering) {
@@ -771,8 +1174,64 @@ async function tagFocusedImage(colorIndex) {
 
 // Set up event listeners
 function setupEventListeners() {
+    // Mode toggle buttons
+    const groupsModeBtn = document.getElementById('groupsModeBtn');
+    const browseModeBtn = document.getElementById('browseModeBtn');
+    if (groupsModeBtn) {
+        groupsModeBtn.addEventListener('click', switchToGroupsMode);
+    }
+    if (browseModeBtn) {
+        browseModeBtn.addEventListener('click', switchToBrowseMode);
+    }
+
+    // Groups mode navigation
     prevBtn.addEventListener('click', prevCluster);
     nextBtn.addEventListener('click', nextCluster);
+
+    // Browse mode navigation
+    const browsePrevBtn = document.getElementById('browsePrevBtn');
+    const browseNextBtn = document.getElementById('browseNextBtn');
+    if (browsePrevBtn) {
+        browsePrevBtn.addEventListener('click', prevBrowsePage);
+    }
+    if (browseNextBtn) {
+        browseNextBtn.addEventListener('click', nextBrowsePage);
+    }
+
+    // Browse controls
+    const imagesPerPageSelect = document.getElementById('imagesPerPageSelect');
+    if (imagesPerPageSelect) {
+        imagesPerPageSelect.addEventListener('change', (e) => {
+            browseImagesPerPage = e.target.value === 'all' ? -1 : parseInt(e.target.value);
+            browseCurrentPage = 0; // Reset to first page
+            showBrowsePage(0);
+        });
+    }
+
+    const sortBySelect = document.getElementById('sortBySelect');
+    if (sortBySelect) {
+        sortBySelect.addEventListener('change', (e) => {
+            browseSortBy = e.target.value;
+            browseCurrentPage = 0;
+            showBrowsePage(0);
+        });
+    }
+
+    const sortOrderBtn = document.getElementById('sortOrderBtn');
+    if (sortOrderBtn) {
+        sortOrderBtn.addEventListener('click', () => {
+            browseSortAscending = !browseSortAscending;
+            updateSortOrderButton();
+            browseCurrentPage = 0;
+            showBrowsePage(0);
+        });
+    }
+
+    // Show All filter button
+    const showAllFilterBtn = document.getElementById('showAllFilterBtn');
+    if (showAllFilterBtn) {
+        showAllFilterBtn.addEventListener('click', activateShowAll);
+    }
     
     // Set up grid brightness button event listeners
     const brightnessDownBtn = document.getElementById('gridBrightnessDown');
@@ -955,7 +1414,11 @@ function setupEventListeners() {
             case 'p':
             case 'P':
                 e.preventDefault();
-                prevCluster();
+                if (viewMode === 'browse') {
+                    prevBrowsePage();
+                } else {
+                    prevCluster();
+                }
                 break;
             case 'ArrowRight':
             case 'd':
@@ -963,7 +1426,11 @@ function setupEventListeners() {
             case 'n':
             case 'N':
                 e.preventDefault();
-                nextCluster();
+                if (viewMode === 'browse') {
+                    nextBrowsePage();
+                } else {
+                    nextCluster();
+                }
                 break;
             case 'q':
             case 'Q':
@@ -1015,6 +1482,7 @@ function setupEventListeners() {
 function openLightbox(imageIndex) {
     lightboxOpen = true;
     lightboxImageIndex = imageIndex;
+    lightboxViewMode = 'groups'; // Set to groups mode
     zoomLevel = 1;
     brightnessLevel = 100;
     panOffsetX = 0;
@@ -1174,27 +1642,47 @@ function setBrightness(newBrightness) {
 }
 
 function lightboxPrevImage() {
-    const isUngrouped = currentCluster >= clusters.length;
-    const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
+    if (lightboxViewMode === 'browse') {
+        // Navigate through ALL filtered images, across pages
+        const totalImages = browseFilteredImages.length;
+        lightboxImageIndex = (lightboxImageIndex - 1 + totalImages) % totalImages;
+        showBrowseLightboxImage();
+    } else {
+        // Groups mode navigation
+        const isUngrouped = currentCluster >= clusters.length;
+        const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
 
-    lightboxImageIndex = (lightboxImageIndex - 1 + totalImages) % totalImages;
+        lightboxImageIndex = (lightboxImageIndex - 1 + totalImages) % totalImages;
+        showLightboxImage();
+    }
+
+    // Reset zoom/pan
     zoomLevel = 1;
     brightnessLevel = 100;
     panOffsetX = 0;
     panOffsetY = 0;
-    showLightboxImage();
 }
 
 function lightboxNextImage() {
-    const isUngrouped = currentCluster >= clusters.length;
-    const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
+    if (lightboxViewMode === 'browse') {
+        // Navigate through ALL filtered images, across pages
+        const totalImages = browseFilteredImages.length;
+        lightboxImageIndex = (lightboxImageIndex + 1) % totalImages;
+        showBrowseLightboxImage();
+    } else {
+        // Groups mode navigation
+        const isUngrouped = currentCluster >= clusters.length;
+        const totalImages = isUngrouped ? ungroupedImages.length : clusters[currentCluster].images.length;
 
-    lightboxImageIndex = (lightboxImageIndex + 1) % totalImages;
+        lightboxImageIndex = (lightboxImageIndex + 1) % totalImages;
+        showLightboxImage();
+    }
+
+    // Reset zoom/pan
     zoomLevel = 1;
     brightnessLevel = 100;
     panOffsetX = 0;
     panOffsetY = 0;
-    showLightboxImage();
 }
 
 function setupLightboxEventListeners() {
