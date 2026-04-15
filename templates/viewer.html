@@ -23,9 +23,112 @@
             </div>
             <div class="threshold-controls">
                 <span class="threshold-label">Similarity Threshold:</span>
-                <button id="thresholdDecrease" class="threshold-btn" title="More Similar (Lower Threshold)">←</button>
-                <span id="thresholdDisplay" class="threshold-value">10</span>
-                <button id="thresholdIncrease" class="threshold-btn" title="Less Similar (Higher Threshold)">→</button>
+                <div class="threshold-radio-group">
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.0">
+                        <span>0.0</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.1">
+                        <span>0.1</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.2">
+                        <span>0.2</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.3">
+                        <span>0.3</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.4">
+                        <span>0.4</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.5">
+                        <span>0.5</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.6">
+                        <span>0.6</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.7">
+                        <span>0.7</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.8">
+                        <span>0.8</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.85" checked>
+                        <span>0.85</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.86">
+                        <span>0.86</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.87">
+                        <span>0.87</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.88">
+                        <span>0.88</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.89">
+                        <span>0.89</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.90">
+                        <span>0.90</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.91">
+                        <span>0.91</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.92">
+                        <span>0.92</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.93">
+                        <span>0.93</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.94">
+                        <span>0.94</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.95">
+                        <span>0.95</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.96">
+                        <span>0.96</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.97">
+                        <span>0.97</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.98">
+                        <span>0.98</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="0.99">
+                        <span>0.99</span>
+                    </label>
+                    <label class="threshold-radio">
+                        <input type="radio" name="threshold" value="1.0">
+                        <span>1.0</span>
+                    </label>
+                </div>
+                <label class="clustering-mode-toggle" title="Direct: tighter groups where ALL images are directly similar. Transitive: looser groups allowing indirect connections.">
+                    <input type="checkbox" id="directOnlyCheckbox">
+                    <span>Direct only</span>
+                </label>
                 <button id="thresholdApply" class="threshold-btn apply-btn" title="Re-cluster with new threshold">Apply</button>
                 <span id="thresholdStatus" class="threshold-status"></span>
             </div>
@@ -36,6 +139,9 @@
                     <button id="clearMainColorFilter" class="filter-clear-btn" title="Clear all filters">✕</button>
                 </div>
                 <span id="filterStatus" class="filter-status"></span>
+                <button id="toggleSimilarities" class="toggle-similarities-btn" title="Show/Hide similarity details">
+                    Show Details
+                </button>
             </div>
             <div class="help">
                 Keyboard: ← → or A D to navigate | Q or ESC to close window

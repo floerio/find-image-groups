@@ -2,7 +2,7 @@
 """
 Find Image Groups - Fuji RAW Similarity Finder
 
-Compares Fuji RAW files (.RAF) to find similar images based on perceptual hashing.
+Compares Fuji RAW files (.RAF) to find similar images using DINOv2 embeddings.
 Groups similar images and provides interactive viewer with color tagging.
 """
 
@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Set
 from multiprocessing import Pool, cpu_count
 import rawpy
-import imagehash
 from PIL import Image
 import numpy as np
 from tqdm import tqdm
@@ -23,27 +22,52 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 from web_viewer import WebViewer
+import torch
+from transformers import AutoImageProcessor, AutoModel
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class ImageSimilarityFinder:
-    """Find similar images in a collection of Fuji RAW files."""
+    """Find similar images in a collection of Fuji RAW files using DINOv2."""
 
-    def __init__(self, hash_size: int = 8, threshold: int = 10, use_cache: bool = True, hash_method: str = "phash"):
+    def __init__(self, threshold: float = 0.85, use_cache: bool = True, max_size: int = 512, model_name: str = "facebook/dinov2-base", use_transitive: bool = False):
         """
         Initialize the similarity finder.
 
         Args:
-            hash_size: Size of the perceptual hash (larger = more precise)
-            threshold: Hamming distance threshold (lower = more similar required)
-            use_cache: Whether to use hash caching
-            hash_method: Hash method to use (average, phash, dhash, whash)
+            threshold: Cosine similarity threshold (0-1, higher = more similar required)
+            use_cache: Whether to use embedding caching
+            max_size: Maximum image size for DINOv2 processing (smaller = faster)
+            model_name: DINOv2 model to use (dinov2-small, dinov2-base, dinov2-large, dinov2-giant)
+            use_transitive: If True, use transitive clustering. If False, use direct similarity only.
         """
-        self.hash_size = hash_size
         self.threshold = threshold
         self.use_cache = use_cache
-        self.hash_method = hash_method
-        self.image_hashes: Dict[str, imagehash.ImageHash] = {}
+        self.max_size = max_size
+        self.model_name = model_name
+        self.use_transitive = use_transitive
+        self.image_embeddings: Dict[str, np.ndarray] = {}
         self.cache_file = None
+
+        # Setup device (GPU if available)
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+            print("✓ Using GPU (CUDA)")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+            print("✓ Using GPU (Apple Silicon MPS)")
+        else:
+            self.device = torch.device("cpu")
+            print("⚠ Using CPU (slower)")
+
+        # Load DINOv2 model
+        print(f"Loading DINOv2 model: {model_name}")
+        print("(First time: downloading model, this may take a few minutes...)")
+        self.processor = AutoImageProcessor.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name)
+        self.model.to(self.device)
+        self.model.eval()
+        print("✓ Model loaded and ready")
 
     def load_raw_file(self, filepath: Path) -> Image.Image:
         """
@@ -53,7 +77,7 @@ class ImageSimilarityFinder:
             filepath: Path to the RAF file
 
         Returns:
-            PIL Image object
+            PIL Image object (resized for DINOv2 processing)
         """
         with rawpy.imread(str(filepath)) as raw:
             # Process RAW to RGB array
@@ -63,30 +87,33 @@ class ImageSimilarityFinder:
                 no_auto_bright=True,
                 output_bps=8
             )
-        return Image.fromarray(rgb)
+        img = Image.fromarray(rgb)
 
-    def compute_hash(self, image: Image.Image) -> imagehash.ImageHash:
+        # Resize to max_size for faster DINOv2 processing
+        img.thumbnail((self.max_size, self.max_size), Image.Resampling.LANCZOS)
+        return img
+
+    def compute_embedding(self, image: Image.Image) -> np.ndarray:
         """
-        Compute perceptual hash for an image.
+        Compute DINOv2 embedding for an image.
 
         Args:
             image: PIL Image object
 
         Returns:
-            Perceptual hash
+            Embedding vector as numpy array
         """
-        # Use the selected hash method
-        if self.hash_method == "average":
-            return imagehash.average_hash(image, hash_size=self.hash_size)
-        elif self.hash_method == "phash":
-            return imagehash.phash(image, hash_size=self.hash_size)
-        elif self.hash_method == "dhash":
-            return imagehash.dhash(image, hash_size=self.hash_size)
-        elif self.hash_method == "whash":
-            return imagehash.whash(image, hash_size=self.hash_size)
-        else:
-            # Default to phash if unknown method
-            return imagehash.phash(image, hash_size=self.hash_size)
+        # Preprocess image
+        inputs = self.processor(images=image, return_tensors="pt")
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        # Generate embedding
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            # DINOv2 uses [CLS] token as image representation
+            embedding = outputs.last_hidden_state[:, 0, :].cpu().numpy()[0]
+
+        return embedding
 
     def get_file_signature(self, filepath: Path) -> str:
         """
@@ -103,7 +130,7 @@ class ImageSimilarityFinder:
 
     def load_cache(self, directory: Path) -> Dict:
         """
-        Load hash cache from directory.
+        Load embedding cache from directory.
 
         Args:
             directory: Directory containing the cache file
@@ -114,7 +141,7 @@ class ImageSimilarityFinder:
         if not self.use_cache:
             return {}
 
-        self.cache_file = directory / '.fuji_similarity_cache.json'
+        self.cache_file = directory / '.fuji_similarity_dinov2_cache.json'
 
         if not self.cache_file.exists():
             return {}
@@ -123,12 +150,12 @@ class ImageSimilarityFinder:
             with open(self.cache_file, 'r') as f:
                 cache_data = json.load(f)
 
-            # Validate cache version and hash_size
-            if cache_data.get('version') != '1.0' or cache_data.get('hash_size') != self.hash_size:
-                print("Cache version mismatch or different hash_size, rebuilding cache...")
+            # Validate cache version and model
+            if cache_data.get('version') != '2.0' or cache_data.get('model_name') != self.model_name:
+                print("Cache version mismatch or different model, rebuilding cache...")
                 return {}
 
-            return cache_data.get('hashes', {})
+            return cache_data.get('embeddings', {})
 
         except Exception as e:
             print(f"Error loading cache: {e}")
@@ -136,7 +163,7 @@ class ImageSimilarityFinder:
 
     def save_cache(self, directory: Path) -> None:
         """
-        Save hash cache to directory.
+        Save embedding cache to directory.
 
         Args:
             directory: Directory to save cache file
@@ -145,20 +172,20 @@ class ImageSimilarityFinder:
             return
 
         try:
-            # Convert imagehash objects to strings
+            # Convert numpy embeddings to lists for JSON serialization
             cache_data = {
-                'version': '1.0',
-                'hash_size': self.hash_size,
-                'hashes': {}
+                'version': '2.0',
+                'model_name': self.model_name,
+                'embeddings': {}
             }
 
-            for filepath, hash_obj in self.image_hashes.items():
+            for filepath, embedding in self.image_embeddings.items():
                 file_path_obj = Path(filepath)
                 if file_path_obj.exists():
                     signature = self.get_file_signature(file_path_obj)
-                    cache_data['hashes'][filepath] = {
+                    cache_data['embeddings'][filepath] = {
                         'signature': signature,
-                        'hash': str(hash_obj)
+                        'embedding': embedding.tolist()
                     }
 
             with open(self.cache_file, 'w') as f:
@@ -169,13 +196,13 @@ class ImageSimilarityFinder:
         except Exception as e:
             print(f"Error saving cache: {e}")
 
-    def process_directory(self, directory: Path, parallel: bool = True) -> None:
+    def process_directory(self, directory: Path, parallel: bool = False) -> None:
         """
-        Process all RAF files in a directory and compute their hashes.
+        Process all RAF files in a directory and compute their embeddings.
 
         Args:
             directory: Path to directory containing RAF files
-            parallel: Whether to use parallel processing
+            parallel: Whether to use parallel processing (disabled for DINOv2 - GPU doesn't benefit)
         """
         raf_files = list(directory.glob("*.RAF")) + list(directory.glob("*.raf"))
 
@@ -200,10 +227,10 @@ class ImageSimilarityFinder:
                 current_signature = self.get_file_signature(filepath)
 
                 if cached_entry.get('signature') == current_signature:
-                    # Use cached hash
+                    # Use cached embedding
                     try:
-                        hash_str = cached_entry['hash']
-                        self.image_hashes[filepath_str] = imagehash.hex_to_hash(hash_str)
+                        embedding_list = cached_entry['embedding']
+                        self.image_embeddings[filepath_str] = np.array(embedding_list)
                         cached_count += 1
                         continue
                     except Exception:
@@ -212,93 +239,78 @@ class ImageSimilarityFinder:
             files_to_process.append(filepath)
 
         if cached_count > 0:
-            print(f"Loaded {cached_count} hashes from cache.")
+            print(f"Loaded {cached_count} embeddings from cache.")
 
         if not files_to_process:
-            print("All hashes loaded from cache!")
+            print("All embeddings loaded from cache!")
             return
 
         print(f"Processing {len(files_to_process)} files...")
 
-        # Process files
-        if parallel and len(files_to_process) > 1:
-            # Use parallel processing
-            num_workers = min(cpu_count(), len(files_to_process))
-            print(f"Using {num_workers} parallel workers")
-
-            with Pool(num_workers) as pool:
-                results = list(tqdm(
-                    pool.imap(self._process_single_file, files_to_process),
-                    total=len(files_to_process),
-                    desc="Computing hashes"
-                ))
-
-            # Collect results
-            for filepath, hash_value in results:
-                if hash_value is not None:
-                    self.image_hashes[str(filepath)] = hash_value
-        else:
-            # Sequential processing
-            for filepath in tqdm(files_to_process, desc="Computing hashes"):
-                filepath_str, hash_value = self._process_single_file(filepath)
-                if hash_value is not None:
-                    self.image_hashes[filepath_str] = hash_value
+        # Process files sequentially (GPU processing doesn't benefit from multiprocessing)
+        for filepath in tqdm(files_to_process, desc="Computing embeddings"):
+            filepath_str, embedding = self._process_single_file(filepath)
+            if embedding is not None:
+                self.image_embeddings[filepath_str] = embedding
 
         # Save cache
         if self.use_cache:
             self.save_cache(directory)
 
-    def _process_single_file(self, filepath: Path) -> Tuple[str, imagehash.ImageHash]:
+    def _process_single_file(self, filepath: Path) -> Tuple[str, np.ndarray]:
         """
-        Process a single RAF file (for parallel processing).
+        Process a single RAF file.
 
         Args:
             filepath: Path to RAF file
 
         Returns:
-            Tuple of (filepath_str, hash_value)
+            Tuple of (filepath_str, embedding)
         """
         try:
             image = self.load_raw_file(filepath)
-            hash_value = self.compute_hash(image)
-            return (str(filepath), hash_value)
+            embedding = self.compute_embedding(image)
+            return (str(filepath), embedding)
         except Exception as e:
             print(f"\nError processing {filepath.name}: {e}", file=sys.stderr)
             return (str(filepath), None)
 
-    def find_similar_images(self) -> List[Tuple[str, str, int]]:
+    def find_similar_images(self) -> List[Tuple[str, str, float]]:
         """
-        Find pairs of similar images based on hash comparison.
+        Find pairs of similar images based on cosine similarity.
 
         Returns:
-            List of tuples (image1_path, image2_path, distance)
+            List of tuples (image1_path, image2_path, similarity_score)
         """
         similar_pairs = []
-        image_paths = list(self.image_hashes.keys())
+        image_paths = list(self.image_embeddings.keys())
 
         print(f"\nComparing {len(image_paths)} images...")
 
+        # Convert embeddings to matrix for efficient computation
+        embeddings_matrix = np.array([self.image_embeddings[path] for path in image_paths])
+
+        # Compute cosine similarity matrix
+        similarity_matrix = cosine_similarity(embeddings_matrix)
+
+        # Find similar pairs
         for i in range(len(image_paths)):
             for j in range(i + 1, len(image_paths)):
-                path1, path2 = image_paths[i], image_paths[j]
-                hash1, hash2 = self.image_hashes[path1], self.image_hashes[path2]
+                similarity = similarity_matrix[i][j]
 
-                # Calculate Hamming distance
-                distance = hash1 - hash2
+                if similarity >= self.threshold:
+                    similar_pairs.append((image_paths[i], image_paths[j], similarity))
 
-                print(f"P1: {path1} - {hash1}, P2: {path2} - {hash2}, Distance: {distance}")
-
-                if distance <= self.threshold:
-                    similar_pairs.append((path1, path2, distance))
-
-        # Sort by similarity (lower distance = more similar)
-        similar_pairs.sort(key=lambda x: x[2])
+        # Sort by similarity (higher similarity = more similar)
+        similar_pairs.sort(key=lambda x: x[2], reverse=True)
 
         return similar_pairs
 
-    def cluster_similar_images(self, similar_pairs: List[Tuple[str, str, int]]) -> List[Dict]:
+    def cluster_similar_images_direct(self, similar_pairs: List[Tuple[str, str, float]]) -> List[Dict]:
         """
-        Cluster similar images into groups using union-find algorithm.
+        Cluster similar images using direct similarity only (no transitive grouping).
+        Images are only grouped together if ALL images in the group are directly similar
+        to each other above the threshold.
 
         Args:
             similar_pairs: List of similar image pairs
@@ -309,7 +321,105 @@ class ImageSimilarityFinder:
         if not similar_pairs:
             return []
 
-        # Union-Find data structure
+        # Build adjacency list from similar pairs
+        from collections import defaultdict
+        adjacency = defaultdict(set)
+        similarity_map = {}
+
+        for path1, path2, similarity in similar_pairs:
+            adjacency[path1].add(path2)
+            adjacency[path2].add(path1)
+            similarity_map[(path1, path2)] = similarity
+            similarity_map[(path2, path1)] = similarity
+
+        # Get all unique images
+        all_images = set()
+        for path1, path2, _ in similar_pairs:
+            all_images.add(path1)
+            all_images.add(path2)
+
+        # Find maximal cliques (groups where all images are directly similar)
+        def is_clique(images_set):
+            """Check if all images in the set are directly similar to each other."""
+            images_list = list(images_set)
+            for i in range(len(images_list)):
+                for j in range(i + 1, len(images_list)):
+                    if images_list[j] not in adjacency[images_list[i]]:
+                        return False
+            return True
+
+        # Greedy clique finding: start with each pair and try to grow
+        clusters = []
+        used_images = set()
+
+        # Sort pairs by similarity (highest first)
+        sorted_pairs = sorted(similar_pairs, key=lambda x: x[2], reverse=True)
+
+        for path1, path2, similarity in sorted_pairs:
+            # Skip if either image is already in a cluster
+            if path1 in used_images or path2 in used_images:
+                continue
+
+            # Start a new cluster with this pair
+            cluster_images = {path1, path2}
+
+            # Try to add more images to this cluster
+            # An image can be added if it's directly similar to ALL current members
+            for candidate in all_images:
+                if candidate in cluster_images or candidate in used_images:
+                    continue
+
+                # Check if candidate is similar to all images in current cluster
+                if all(candidate in adjacency[img] for img in cluster_images):
+                    cluster_images.add(candidate)
+
+            # Record this cluster
+            if len(cluster_images) > 1:
+                # Mark images as used
+                used_images.update(cluster_images)
+
+                # Get all pairs within this cluster
+                cluster_pairs = []
+                cluster_images_list = sorted(list(cluster_images))
+                for i in range(len(cluster_images_list)):
+                    for j in range(i + 1, len(cluster_images_list)):
+                        img1, img2 = cluster_images_list[i], cluster_images_list[j]
+                        if (img1, img2) in similarity_map:
+                            sim = similarity_map[(img1, img2)]
+                            cluster_pairs.append((img1, img2, sim))
+
+                # Sort pairs by similarity
+                cluster_pairs.sort(key=lambda x: x[2], reverse=True)
+
+                clusters.append({
+                    'images': cluster_images_list,
+                    'pairs': cluster_pairs
+                })
+
+        # Sort clusters by size (largest first)
+        clusters.sort(key=lambda x: len(x['images']), reverse=True)
+
+        return clusters
+
+    def cluster_similar_images(self, similar_pairs: List[Tuple[str, str, float]], use_transitive: bool = True) -> List[Dict]:
+        """
+        Cluster similar images into groups.
+
+        Args:
+            similar_pairs: List of similar image pairs
+            use_transitive: If True, use transitive clustering (union-find).
+                          If False, use direct similarity only.
+
+        Returns:
+            List of cluster dictionaries with images and their relationships
+        """
+        if not use_transitive:
+            return self.cluster_similar_images_direct(similar_pairs)
+
+        if not similar_pairs:
+            return []
+
+        # Union-Find data structure for transitive clustering
         parent = {}
 
         def find(x):
@@ -326,16 +436,16 @@ class ImageSimilarityFinder:
                 parent[root_x] = root_y
 
         # Build clusters by unioning similar pairs
-        for path1, path2, distance in similar_pairs:
+        for path1, path2, similarity in similar_pairs:
             union(path1, path2)
 
         # Group ALL images by their root (not just those in similar_pairs)
         # First, ensure all images are in the parent dictionary
         all_images = set()
-        for path1, path2, distance in similar_pairs:
+        for path1, path2, similarity in similar_pairs:
             all_images.add(path1)
             all_images.add(path2)
-        
+
         # Initialize parent for all images
         for img_path in all_images:
             find(img_path)  # This ensures the image is in the parent dict
@@ -352,10 +462,10 @@ class ImageSimilarityFinder:
             clusters_dict[root]['images'].add(img_path)
 
         # Add the similar pairs to each cluster
-        for path1, path2, distance in similar_pairs:
+        for path1, path2, similarity in similar_pairs:
             root = find(path1)
             if root in clusters_dict:
-                clusters_dict[root]['pairs'].append((path1, path2, distance))
+                clusters_dict[root]['pairs'].append((path1, path2, similarity))
 
         # Convert to list and sort by cluster size
         clusters = []
@@ -364,7 +474,7 @@ class ImageSimilarityFinder:
             if len(data['images']) > 1:
                 clusters.append({
                     'images': sorted(list(data['images'])),
-                    'pairs': sorted(data['pairs'], key=lambda x: x[2])
+                    'pairs': sorted(data['pairs'], key=lambda x: x[2], reverse=True)
                 })
 
         # Sort clusters by size (largest first)
@@ -382,7 +492,7 @@ class ImageSimilarityFinder:
         Returns:
             List of image paths that are not in any cluster
         """
-        if not self.image_hashes:
+        if not self.image_embeddings:
             return []
 
         # Get all images that are in clusters
@@ -392,13 +502,13 @@ class ImageSimilarityFinder:
 
         # Find images that are not in any cluster
         ungrouped_images = []
-        for image_path in self.image_hashes.keys():
+        for image_path in self.image_embeddings.keys():
             if image_path not in clustered_images:
                 ungrouped_images.append(image_path)
 
         return sorted(ungrouped_images)
 
-    def print_results(self, similar_pairs: List[Tuple[str, str, int]]) -> None:
+    def print_results(self, similar_pairs: List[Tuple[str, str, float]]) -> None:
         """
         Print the results of similarity comparison.
 
@@ -413,9 +523,9 @@ class ImageSimilarityFinder:
         print(f"Found {len(similar_pairs)} similar image pair(s):")
         print(f"{'='*80}\n")
 
-        for i, (path1, path2, distance) in enumerate(similar_pairs, 1):
-            similarity_pct = max(0, 100 - (distance / self.hash_size**2 * 100))
-            print(f"{i}. Similarity: {similarity_pct:.1f}% (distance: {distance})")
+        for i, (path1, path2, similarity) in enumerate(similar_pairs, 1):
+            similarity_pct = similarity * 100
+            print(f"{i}. Similarity: {similarity_pct:.1f}% (score: {similarity:.4f})")
             print(f"   - {Path(path1).name}")
             print(f"   - {Path(path2).name}")
             print()
@@ -452,10 +562,10 @@ class ImageSimilarityFinder:
 
             # Print similarity details for pairs
             print(f"\n  Similarities within group:")
-            for path1, path2, distance in cluster['pairs']:
-                similarity_pct = max(0, 100 - (distance / self.hash_size**2 * 100))
+            for path1, path2, similarity in cluster['pairs']:
+                similarity_pct = similarity * 100
                 print(f"    {Path(path1).name} ↔ {Path(path2).name}")
-                print(f"      Similarity: {similarity_pct:.1f}% (distance: {distance})")
+                print(f"      Similarity: {similarity_pct:.1f}% (score: {similarity:.4f})")
 
             print()
 
@@ -562,8 +672,8 @@ class ClusterViewer:
 
         # Add similarity information at the bottom
         similarity_text = "Similarities:\n"
-        for path1, path2, distance in pairs:
-            similarity_pct = max(0, 100 - (distance / self.finder.hash_size**2 * 100))
+        for path1, path2, similarity in pairs:
+            similarity_pct = similarity * 100
             name1 = Path(path1).name
             name2 = Path(path2).name
             similarity_text += f"  {name1} ↔ {name2}: {similarity_pct:.1f}%\n"
@@ -697,30 +807,40 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s /path/to/photos
-  %(prog)s /path/to/photos --threshold 5
-  %(prog)s /path/to/photos --hash-size 16 --threshold 8
+  %(prog)s                                    # Uses default directory: /Users/ofloericke/images
+  %(prog)s /path/to/photos                    # Use custom directory
+  %(prog)s --threshold 0.90 --web-viewer      # Higher threshold with web viewer
+  %(prog)s /path/to/photos --model facebook/dinov2-large
         """
     )
 
     parser.add_argument(
         "directory",
         type=Path,
-        help="Directory containing Fuji RAF files"
+        nargs='?',
+        default=Path("/Users/ofloericke/images"),
+        help="Directory containing Fuji RAF files (default: /Users/ofloericke/images)"
     )
 
     parser.add_argument(
         "-t", "--threshold",
-        type=int,
-        default=10,
-        help="Similarity threshold (0-64, lower = more similar required). Default: 10"
+        type=float,
+        default=0.85,
+        help="Similarity threshold (0.0-1.0, higher = more similar required). Default: 0.85"
     )
 
     parser.add_argument(
-        "-s", "--hash-size",
+        "--max-size",
         type=int,
-        default=8,
-        help="Hash size for comparison (larger = more precise). Default: 8"
+        default=512,
+        help="Maximum image size for DINOv2 processing (smaller = faster). Default: 512"
+    )
+
+    parser.add_argument(
+        "--model",
+        choices=["facebook/dinov2-small", "facebook/dinov2-base", "facebook/dinov2-large", "facebook/dinov2-giant"],
+        default="facebook/dinov2-base",
+        help="DINOv2 model to use. Default: facebook/dinov2-base"
     )
 
     parser.add_argument(
@@ -744,8 +864,8 @@ Examples:
     parser.add_argument(
         "-p", "--port",
         type=int,
-        default=5000,
-        help="Port for web viewer (default: 5000)"
+        default=5020,
+        help="Port for web viewer (default: 5020)"
     )
 
     parser.add_argument(
@@ -761,16 +881,15 @@ Examples:
     )
 
     parser.add_argument(
-        "--show-ungrouped",
+        "-ug", "--show-ungrouped",
         action="store_true",
         help="Show images that are not part of any similar group"
     )
 
     parser.add_argument(
-        "--hash-method",
-        choices=["average", "phash", "dhash", "whash"],
-        default="phash",
-        help="Hash method to use (average, phash, dhash, whash). Default: phash"
+        "-do", "--direct-only",
+        action="store_true",
+        help="Use direct similarity clustering only (no transitive grouping). Groups will only contain images that are ALL directly similar to each other."
     )
 
     args = parser.parse_args()
@@ -786,15 +905,16 @@ Examples:
 
     # Create finder and process images
     finder = ImageSimilarityFinder(
-        hash_size=args.hash_size,
         threshold=args.threshold,
         use_cache=not args.no_cache,
-        hash_method=args.hash_method
+        max_size=args.max_size,
+        model_name=args.model,
+        use_transitive=not args.direct_only
     )
 
     finder.process_directory(args.directory, parallel=not args.no_parallel)
 
-    if not finder.image_hashes:
+    if not finder.image_embeddings:
         print("No images were successfully processed.")
         sys.exit(1)
 
@@ -803,7 +923,9 @@ Examples:
     if args.no_cluster:
         finder.print_results(similar_pairs)
     else:
-        clusters = finder.cluster_similar_images(similar_pairs)
+        clustering_mode = "transitive" if finder.use_transitive else "direct similarity only"
+        print(f"Clustering mode: {clustering_mode}")
+        clusters = finder.cluster_similar_images(similar_pairs, use_transitive=finder.use_transitive)
         finder.print_clustered_results(clusters)
 
         # Show ungrouped images if requested

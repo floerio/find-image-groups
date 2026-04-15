@@ -278,8 +278,8 @@ class WebViewer:
                         {
                             'img1': Path(pair[0]).name,
                             'img2': Path(pair[1]).name,
-                            'distance': int(pair[2]),
-                            'percentage': float(max(0, 100 - (pair[2] / self.finder.hash_size**2 * 100)))
+                            'similarity': float(pair[2]),
+                            'percentage': float(pair[2] * 100)
                         }
                         for pair in cluster['pairs']
                     ]
@@ -395,18 +395,27 @@ class WebViewer:
             
             data = request.get_json()
             new_threshold = data.get('threshold')
-            
-            if not new_threshold or not isinstance(new_threshold, int) or new_threshold < 0 or new_threshold > 64:
-                return jsonify({'error': 'Invalid threshold value (must be 0-64)'}), 400
-            
+            direct_only = data.get('direct_only', False)
+
+            if new_threshold is None or not isinstance(new_threshold, (int, float)) or new_threshold < 0.0 or new_threshold > 1.0:
+                return jsonify({'error': 'Invalid threshold value (must be 0.0-1.0)'}), 400
+
             try:
-                # Update the finder's threshold
+                # Update the finder's threshold and clustering mode
                 original_threshold = self.finder.threshold
+                original_transitive = self.finder.use_transitive
                 self.finder.threshold = new_threshold
-                
+                self.finder.use_transitive = not direct_only
+
+                clustering_mode = "direct only" if direct_only else "transitive"
+                print(f"\n=== Re-clustering with threshold: {new_threshold} (was {original_threshold}), mode: {clustering_mode} ===")
+
                 # Re-find similar pairs and re-cluster
                 similar_pairs = self.finder.find_similar_images()
-                new_clusters = self.finder.cluster_similar_images(similar_pairs)
+                print(f"Found {len(similar_pairs)} similar pairs")
+
+                new_clusters = self.finder.cluster_similar_images(similar_pairs, use_transitive=self.finder.use_transitive)
+                print(f"Created {len(new_clusters)} clusters")
                 
                 # Find ungrouped images if enabled
                 new_ungrouped = []
@@ -435,8 +444,8 @@ class WebViewer:
                             {
                                 'img1': Path(pair[0]).name,
                                 'img2': Path(pair[1]).name,
-                                'distance': int(pair[2]),
-                                'percentage': float(max(0, 100 - (pair[2] / self.finder.hash_size**2 * 100)))
+                                'similarity': float(pair[2]),
+                                'percentage': float(pair[2] * 100)
                             }
                             for pair in cluster['pairs']
                         ]
@@ -461,13 +470,14 @@ class WebViewer:
                     'stats': {
                         'num_clusters': len(self.clusters),
                         'num_ungrouped': len(self.ungrouped_images) if self.show_ungrouped else 0,
-                        'total_images': len(self.finder.image_hashes)
+                        'total_images': len(self.finder.image_embeddings)
                     }
                 })
                 
             except Exception as e:
-                # Restore original threshold if something goes wrong
+                # Restore original values if something goes wrong
                 self.finder.threshold = original_threshold
+                self.finder.use_transitive = original_transitive
                 return jsonify({'error': f'Re-clustering failed: {str(e)}'}), 500
             finally:
                 self.is_reclustering = False
@@ -476,6 +486,14 @@ class WebViewer:
         def get_color_list():
             """Return available colors."""
             return jsonify(self.COLORS)
+
+        @self.app.route('/api/config')
+        def get_config():
+            """Return current configuration."""
+            return jsonify({
+                'threshold': self.finder.threshold,
+                'direct_only': not self.finder.use_transitive
+            })
 
         @self.app.route('/api/color/<int:cluster_id>/<int:image_id>', methods=['POST'])
         def set_color(cluster_id, image_id):

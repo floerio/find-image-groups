@@ -146,6 +146,104 @@ h1 {
     text-align: left;
 }
 
+.threshold-radio-group {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.threshold-radio {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    background: #3a3a3a;
+    border: 1px solid #505050;
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    transition: all 0.2s;
+}
+
+.threshold-radio:hover {
+    background: #4a4a4a;
+    border-color: #FF9800;
+}
+
+.threshold-radio input[type="radio"] {
+    display: none;
+}
+
+.threshold-radio input[type="radio"]:checked + span {
+    color: #FF9800;
+    font-weight: bold;
+}
+
+.threshold-radio input[type="radio"]:checked ~ span {
+    background: #2a2a2a;
+}
+
+.threshold-radio:has(input[type="radio"]:checked) {
+    background: #2a2a2a;
+    border-color: #FF9800;
+}
+
+.threshold-radio span {
+    color: #e0e0e0;
+    font-size: 0.9rem;
+}
+
+.clustering-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #3a3a3a;
+    border: 1px solid #505050;
+    border-radius: 4px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.clustering-mode-toggle:hover {
+    background: #4a4a4a;
+    border-color: #FF9800;
+}
+
+.clustering-mode-toggle input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+.clustering-mode-toggle span {
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    user-select: none;
+}
+
+.toggle-similarities-btn {
+    background: #3a3a3a;
+    color: #e0e0e0;
+    border: 1px solid #505050;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.toggle-similarities-btn:hover {
+    background: #4a4a4a;
+    border-color: #4CAF50;
+}
+
+.toggle-similarities-btn.active {
+    background: #4CAF50;
+    border-color: #4CAF50;
+    color: white;
+}
+
 .controls-right {
     display: flex;
     align-items: center;
@@ -714,6 +812,11 @@ main {
     padding: 1.5rem;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    display: none; /* Hidden by default */
+}
+
+.similarities.visible {
+    display: block;
 }
 
 .similarities h3 {

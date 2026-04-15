@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:5020/api/ungrouped)",
+      "Bash(node --check /Users/ofloericke/Projects/find-image-groups/static/js/viewer.js)",
+      "Bash(pkill -f \"python.*fuji_similarity.*web-viewer\")"
+    ]
+  }
+}

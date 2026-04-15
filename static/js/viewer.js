@@ -7,7 +7,7 @@ let availableColors = [];
 let focusedImageIndex = 0;
 let showUngrouped = false;
 let gridBrightness = 100; // Global brightness for grid view
-let currentThreshold = 10; // Current similarity threshold
+let currentThreshold = 0.85; // Current similarity threshold
 let isReclustering = false; // Flag to prevent multiple simultaneous re-clustering
 let activeColorFilters = new Set(); // Track which colors are being filtered out
 
@@ -35,20 +35,39 @@ const nextBtn = document.getElementById('nextBtn');
 // Initialize
 async function init() {
     try {
-        // Load colors, clusters, and ungrouped images in parallel
-        const [colorsResponse, clustersResponse, ungroupedResponse] = await Promise.all([
+        // Load colors, clusters, ungrouped images, and config in parallel
+        const [colorsResponse, clustersResponse, ungroupedResponse, configResponse] = await Promise.all([
             fetch('/api/colors'),
             fetch('/api/clusters'),
-            fetch('/api/ungrouped')
+            fetch('/api/ungrouped'),
+            fetch('/api/config')
         ]);
 
-        if (!colorsResponse.ok || !clustersResponse.ok || !ungroupedResponse.ok) {
+        if (!colorsResponse.ok || !clustersResponse.ok || !ungroupedResponse.ok || !configResponse.ok) {
             throw new Error('Failed to load data');
         }
 
         availableColors = await colorsResponse.json();
         clusters = await clustersResponse.json();
         ungroupedImages = await ungroupedResponse.json();
+        const config = await configResponse.json();
+
+        // Set initial UI state from config
+        currentThreshold = config.threshold;
+
+        // Set the radio button for the current threshold
+        const thresholdRadios = document.querySelectorAll('input[name="threshold"]');
+        thresholdRadios.forEach(radio => {
+            if (parseFloat(radio.value) === config.threshold) {
+                radio.checked = true;
+            }
+        });
+
+        // Set the direct-only checkbox
+        const directOnlyCheckbox = document.getElementById('directOnlyCheckbox');
+        if (directOnlyCheckbox) {
+            directOnlyCheckbox.checked = config.direct_only;
+        }
 
         showUngrouped = ungroupedImages.length > 0;
 
@@ -56,9 +75,6 @@ async function init() {
             showError();
             return;
         }
-
-        // Initialize threshold display
-        setThresholdDisplay(10); // Default threshold
 
         loading.classList.add('hidden');
         viewer.classList.remove('hidden');
@@ -170,7 +186,7 @@ function showCluster(index) {
         const stats = document.createElement('div');
         stats.innerHTML = `
             <span class="similarity-percentage">Similarity: ${sim.percentage.toFixed(1)}%</span>
-            <span class="similarity-distance">(distance: ${sim.distance})</span>
+            <span class="similarity-score">(score: ${sim.similarity.toFixed(4)})</span>
         `;
 
         item.appendChild(files);
@@ -425,12 +441,9 @@ function resetGridBrightness() {
 }
 
 // Threshold control functions
-function setThresholdDisplay(threshold) {
-    currentThreshold = threshold;
-    const display = document.getElementById('thresholdDisplay');
-    if (display) {
-        display.textContent = threshold;
-    }
+function getSelectedThreshold() {
+    const selected = document.querySelector('input[name="threshold"]:checked');
+    return selected ? parseFloat(selected.value) : 0.85;
 }
 
 function updateThresholdStatus(message, isError = false) {
@@ -673,17 +686,30 @@ async function applyNewThreshold() {
         updateThresholdStatus('Re-clustering already in progress...', true);
         return;
     }
-    
+
+    // Get the selected threshold value from radio buttons
+    const selectedThreshold = getSelectedThreshold();
+    currentThreshold = selectedThreshold;
+
+    // Get the direct-only checkbox state
+    const directOnlyCheckbox = document.getElementById('directOnlyCheckbox');
+    const directOnly = directOnlyCheckbox ? directOnlyCheckbox.checked : false;
+
+    console.log('Applying new threshold:', currentThreshold, 'direct only:', directOnly);
+
     isReclustering = true;
     updateThresholdStatus('Re-clustering...', false);
-    
+
     try {
         const response = await fetch('/api/recluster', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ threshold: currentThreshold })
+            body: JSON.stringify({
+                threshold: currentThreshold,
+                direct_only: directOnly
+            })
         });
         
         if (!response.ok) {
@@ -692,19 +718,23 @@ async function applyNewThreshold() {
         }
         
         const result = await response.json();
-        
+
+        console.log('Re-cluster result:', result);
+        console.log('New clusters:', result.clusters.length);
+        console.log('Stats:', result.stats);
+
         // Update clusters and ungrouped images
         clusters = result.clusters;
         ungroupedImages = result.ungrouped;
         showUngrouped = ungroupedImages.length > 0;
-        
+
         // Reset to first cluster
         currentCluster = 0;
         focusedImageIndex = 0;
-        
+
         // Update display
         showCluster(0);
-        
+
         // Update status
         const stats = result.stats;
         updateThresholdStatus(`Success! ${stats.num_clusters} groups, ${stats.num_ungrouped} ungrouped`, false);
@@ -760,27 +790,18 @@ function setupEventListeners() {
     }
     
     // Set up threshold control event listeners
-    const thresholdDecreaseBtn = document.getElementById('thresholdDecrease');
-    const thresholdIncreaseBtn = document.getElementById('thresholdIncrease');
     const thresholdApplyBtn = document.getElementById('thresholdApply');
-    
-    if (thresholdDecreaseBtn) {
-        thresholdDecreaseBtn.onclick = () => {
-            if (currentThreshold > 1) {
-                setThresholdDisplay(currentThreshold - 1);
-            }
-        };
-    }
-    if (thresholdIncreaseBtn) {
-        thresholdIncreaseBtn.onclick = () => {
-            if (currentThreshold < 64) {
-                setThresholdDisplay(currentThreshold + 1);
-            }
-        };
-    }
     if (thresholdApplyBtn) {
         thresholdApplyBtn.onclick = applyNewThreshold;
     }
+
+    // Set up radio button listeners to update current threshold when changed
+    const thresholdRadios = document.querySelectorAll('input[name="threshold"]');
+    thresholdRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            currentThreshold = parseFloat(radio.value);
+        });
+    });
     
     // Set up color filter clear buttons
     const clearFilterBtn = document.getElementById('clearColorFilter');
@@ -793,6 +814,26 @@ function setupEventListeners() {
         clearMainFilterBtn.onclick = () => {
             clearColorFilter();
             updateFilterStatus();
+        };
+    }
+
+    // Toggle similarities button
+    const toggleSimilaritiesBtn = document.getElementById('toggleSimilarities');
+    if (toggleSimilaritiesBtn) {
+        toggleSimilaritiesBtn.onclick = () => {
+            const similaritiesDiv = document.getElementById('similarities');
+            if (similaritiesDiv) {
+                similaritiesDiv.classList.toggle('visible');
+
+                // Update button text and style
+                if (similaritiesDiv.classList.contains('visible')) {
+                    toggleSimilaritiesBtn.textContent = 'Hide Details';
+                    toggleSimilaritiesBtn.classList.add('active');
+                } else {
+                    toggleSimilaritiesBtn.textContent = 'Show Details';
+                    toggleSimilaritiesBtn.classList.remove('active');
+                }
+            }
         };
     }
 

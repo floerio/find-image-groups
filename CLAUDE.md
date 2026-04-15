@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Find Image Groups** - A hybrid Python/JavaScript tool that compares Fuji RAW files (.RAF) to identify similar images using perceptual hashing.
+**Find Image Groups** - A hybrid Python/JavaScript tool that compares Fuji RAW files (.RAF) to identify similar images using DINOv2 deep learning embeddings.
 
 **Architecture:**
-- **Python backend**: RAW processing, hashing, clustering, and comparison
+- **Python backend**: RAW processing, DINOv2 embedding generation, clustering, and comparison
 - **JavaScript/Web frontend**: Interactive viewer with smooth UI
-- Combines Python's speed for RAW processing with JavaScript's UI capabilities
+- Combines Python's AI-powered similarity detection with JavaScript's UI capabilities
+- GPU-accelerated when available (CUDA or Apple Silicon MPS)
 
 ## Development Setup
 
@@ -31,24 +32,29 @@ Ensure virtual environment is activated first:
 source venv/bin/activate
 ```
 
-Basic usage:
+Basic usage (uses default directory: /Users/ofloericke/images):
+```bash
+python fuji_similarity.py
+```
+
+With custom directory:
 ```bash
 python fuji_similarity.py /path/to/photos
 ```
 
 With custom parameters:
 ```bash
-python fuji_similarity.py /path/to/photos --threshold 5 --hash-size 16
+python fuji_similarity.py /path/to/photos --threshold 0.90 --max-size 768
 ```
 
 With web viewer (recommended):
 ```bash
-python fuji_similarity.py /path/to/photos --web-viewer
+python fuji_similarity.py --web-viewer
 ```
 
 With matplotlib viewer (offline):
 ```bash
-python fuji_similarity.py /path/to/photos --viewer
+python fuji_similarity.py --viewer
 ```
 
 ## Architecture
@@ -62,10 +68,10 @@ python fuji_similarity.py /path/to/photos --viewer
 
 **Python Backend (`fuji_similarity.py`):**
 - `ImageSimilarityFinder` class handles all image processing and comparison logic
-  - `load_raw_file()` - Uses rawpy to process RAF files with half-size rendering for performance
-  - `compute_hash()` - Generates perceptual hash using average hash algorithm
-  - `process_directory()` - Batch processes all RAF files in a directory
-  - `find_similar_images()` - Compares all image pairs using Hamming distance
+  - `load_raw_file()` - Uses rawpy to process RAF files with half-size rendering and resizing for performance
+  - `compute_embedding()` - Generates DINOv2 embeddings using transformer model
+  - `process_directory()` - Batch processes all RAF files in a directory (sequential for GPU optimization)
+  - `find_similar_images()` - Compares all image pairs using cosine similarity
   - `cluster_similar_images()` - Groups similar images using union-find algorithm for transitive similarity
   - `print_clustered_results()` - Displays grouped results (default)
   - `print_results()` - Displays individual pairs (legacy mode with --no-cluster)
@@ -116,23 +122,24 @@ python fuji_similarity.py /path/to/photos --viewer
 - Keyboard shortcuts: 1-8 for colors, TAB for focus navigation, click for zoom
 
 **Similarity detection approach**:
-- Uses perceptual hashing (average hash) rather than pixel-by-pixel comparison
-- Hamming distance between hashes determines similarity
-- Lower distance = more similar (threshold default: 10, range: 0-64)
-- Hash size default: 8x8 (can be increased for precision at cost of speed)
+- Uses DINOv2 deep learning embeddings for semantic similarity
+- Cosine similarity between embeddings determines similarity
+- Higher similarity = more similar (threshold default: 0.85, range: 0.0-1.0)
+- Model options: dinov2-small, dinov2-base (default), dinov2-large, dinov2-giant
+- GPU-accelerated when CUDA or Apple Silicon MPS is available
 
-**Clustering algorithm**:
-- Uses union-find (disjoint set) data structure for efficient grouping
-- If A is similar to B, and B is similar to C, all three are grouped together
-- Handles transitive similarity: images don't need to be directly similar to be in same cluster
+**Clustering algorithms**:
+- **Transitive clustering** (default): Uses union-find algorithm. If A~B and B~C, all three are grouped together even if A and C aren't directly similar. Good for finding "families" of related images.
+- **Direct similarity clustering** (--direct-only): Groups only contain images that are ALL directly similar to each other. Results in tighter, more coherent groups. Better for finding exact duplicates or near-duplicates.
 - Clusters sorted by size (largest first) for better output readability
 
 **Performance considerations**:
-- RAW files processed at half-size for speed while maintaining similarity accuracy
-- Parallel processing using multiprocessing.Pool for concurrent RAW loading
-- Hash caching system stores computed hashes with file signatures
+- RAW files processed at half-size and resized (default 512px) for speed while maintaining similarity accuracy
+- Sequential processing for GPU optimization (parallel processing doesn't benefit GPU workloads)
+- Embedding caching system stores computed embeddings with file signatures
 - Cache validation checks file size and modification time
-- O(n²) comparison complexity - all pairs compared
+- GPU acceleration significantly speeds up embedding generation
+- O(n²) comparison complexity - all pairs compared using vectorized cosine similarity
 - Progress bars via tqdm for user feedback on long operations
 
 **XMP Sidecar Integration**:
@@ -144,21 +151,25 @@ python fuji_similarity.py /path/to/photos --viewer
 
 ## Key Parameters
 
-- `--threshold`: Hamming distance threshold (0-64). Lower = stricter matching. Default: 10
-- `--hash-size`: Perceptual hash dimensions (e.g., 8 = 8x8 = 64 bits). Higher = more precision. Default: 8
+- `--threshold`: Cosine similarity threshold (0.0-1.0). Higher = stricter matching. Default: 0.85
+- `--max-size`: Maximum image size for DINOv2 processing. Smaller = faster. Default: 512
+- `--model`: DINOv2 model variant (facebook/dinov2-small, facebook/dinov2-base, facebook/dinov2-large, facebook/dinov2-giant). Default: facebook/dinov2-base
 - `--no-cluster`: Disable clustering, show individual pairs instead (legacy mode)
 - `--web-viewer`: Launch web-based viewer (recommended)
 - `--viewer`: Launch matplotlib viewer (offline alternative)
 - `--port`: Port for web server. Default: 5000
-- `--no-cache`: Disable hash caching (forces recomputation)
-- `--no-parallel`: Disable parallel processing
+- `--no-cache`: Disable embedding caching (forces recomputation)
+- `--no-parallel`: Disable parallel processing (already disabled by default for GPU optimization)
+- `--direct-only`: Use direct similarity clustering (no transitive grouping). Groups only contain images ALL directly similar to each other.
 
 ## Dependencies
 
 - `rawpy`: RAF file reading and RAW processing (wraps libraw C++ library)
-- `imagehash`: Perceptual hash computation
+- `torch`: PyTorch for deep learning and GPU acceleration
+- `transformers`: Hugging Face transformers library for DINOv2 model
+- `scikit-learn`: Cosine similarity computation
 - `Pillow`: Image manipulation after RAW processing
-- `numpy`: Array operations (dependency of rawpy)
+- `numpy`: Array operations
 - `tqdm`: Progress bar display
 - `flask`: Web server for hybrid viewer
 - `matplotlib`: Offline matplotlib viewer
