@@ -1,1 +1,13 @@
-python3 fuji_similarity.py ~/images --web-viewer --no-cache --web-viewer --port 8020 --show-ungrouped -s 8  -t 7 --hash-method whash
+Using venv:
+
+python3 -m venv venv
+source venv/bin/activate
+deactivate
+
+typical run
+
+show ungrouped images, direct compare, eyes dection
+python3 find-image-groups.py -ug -do -de
+
+additional: no ching
+python3 find-image-groups.py -ug -do -de --no-cache
