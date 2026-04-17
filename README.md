@@ -6,6 +6,7 @@ A Python tool to find and organize similar images using DINOv2 deep learning emb
 
 - **Multi-format support**: RAW (RAF, NEF, ARW, CR2, CR3, etc.) and standard (JPG, PNG, TIFF, BMP)
 - **DINOv2 AI-powered similarity detection**: Semantic understanding of image content
+- **Eye detection (optional)**: Automatically detect images with closed eyes using CLIP AI model
 - **GPU acceleration**: CUDA and Apple Silicon MPS support
 - **Automatically clusters similar images into groups**
 - **Two clustering modes**: Transitive (loose) or Direct-only (tight)
@@ -70,6 +71,21 @@ python find-image-groups.py /path/to/photos --web-viewer
 
 This starts a local web server and opens a browser interface with smooth navigation, color tagging, and EXIF data display.
 
+**With eye detection (annotates but doesn't filter):**
+```bash
+python find-image-groups.py /path/to/photos --detect-eyes --web-viewer
+```
+
+**With eye detection and filtering (removes closed-eye images):**
+```bash
+python find-image-groups.py /path/to/photos --detect-eyes --filter-closed-eyes --web-viewer
+```
+
+**Custom eye detection threshold:**
+```bash
+python find-image-groups.py /path/to/photos --detect-eyes --eye-threshold 0.03 --show-eye-stats
+```
+
 ### Options
 
 - `directory` - Directory containing image files (optional, default: `/Users/ofloericke/images`)
@@ -83,15 +99,20 @@ This starts a local web server and opens a browser interface with smooth navigat
 - `--no-cache` - Disable embedding caching (recompute all embeddings).
 - `--no-parallel` - Disable parallel processing (already disabled by default for GPU).
 - `-ug, --show-ungrouped` - Show images that are not part of any similar group.
+- `-de, --detect-eyes` - Enable eye detection (detects open/closed eyes).
+- `--filter-closed-eyes` - Filter out images with closed eyes from results (requires --detect-eyes).
+- `--eye-threshold` - Eye detection threshold (default: 0.02). Higher = stricter closed-eye detection.
+- `--show-eye-stats` - Show eye detection statistics in console output.
 
 ## How It Works
 
 1. **Image Loading**: Reads RAW files (RAF, NEF, ARW, CR2, etc.) using `rawpy` or standard images (JPG, PNG) using PIL
 2. **DINOv2 Embeddings**: Computes deep learning embeddings that capture semantic image content
-3. **GPU Acceleration**: Uses CUDA or Apple Silicon MPS if available for faster processing
-4. **Comparison**: Compares all image pairs using cosine similarity between embeddings
-5. **Clustering**: Groups similar images using union-find (transitive) or direct similarity algorithm
-6. **Results**: Reports groups of similar images with detailed similarity information
+3. **Eye Detection** (optional): Detects open/closed eyes using CLIP model with three-tier face detection
+4. **GPU Acceleration**: Uses CUDA or Apple Silicon MPS if available for faster processing
+5. **Comparison**: Compares all image pairs using cosine similarity between embeddings
+6. **Clustering**: Groups similar images using union-find (transitive) or direct similarity algorithm
+7. **Results**: Reports groups of similar images with detailed similarity information
 
 ## Use Cases
 
@@ -99,12 +120,14 @@ This starts a local web server and opens a browser interface with smooth navigat
 - **Zoom in to inspect details and choose the sharpest image from a burst**
 - **Compare camera settings (ISO, shutter, aperture) between similar shots**
 - Identifying similar compositions from a photo session
+- **Automatically detect and filter out images with closed eyes from portrait sessions**
 - **Tagging keeper images vs. rejects while reviewing similar shots**
 - Cleaning up large photo libraries
 - Finding bracketed exposures with EXIF confirmation
 - **Organizing images for import into Capture One with pre-applied color tags**
 - **Compare exposure/focus differences by zooming into similar images**
 - **Reviewing ungrouped images to find unique shots that don't have similar counterparts**
+- **Quickly identify which shots have closed eyes before selecting final portraits**
 
 ## Example Output
 
@@ -157,6 +180,8 @@ Group 2: 2 similar image(s)
 - Grid layout with hover effects
 - **Lightbox zoom viewer for detailed inspection**
 - **Color tagging for Capture One integration**
+- **Eye detection badges** - Visual indicators showing open/closed eyes on thumbnails
+- **Eye detection filter** - Filter to show only images with closed eyes (😑 icon)
 - Detailed similarity information
 - **Ungrouped images section** - View images that don't have similar counterparts
 - Works in any modern browser
@@ -198,12 +223,24 @@ Group 2: 2 similar image(s)
 - **Use case**: Hide rejected images (e.g., Red) to focus on keepers
 - **Location**: Main interface, below threshold controls
 
+**Eye Detection Filter:**
+- **😑 icon button** - Click to show only images with closed eyes (when eye detection enabled)
+- **Works with color filters** - Combine eye filter with color filters for precise selection
+- **Visual badges on thumbnails**:
+  - 👁️ (green border) = Open eyes
+  - 😑 (red border) = Closed eyes
+  - ❓ (gray border) = No face detected
+- **Eye detection data** - Status, score, confidence, and detection method shown in EXIF panel
+- **Available in both modes** - Works in Groups mode and Browse All mode
+- **Use case**: Quickly find and tag/filter out closed-eye portraits
+
 **Workflow Example:**
 1. Tag some images as Red (rejected) using keyboard shortcuts
 2. Click the Red filter button in main interface
 3. All Red-tagged images disappear from grid
-4. Focus only on unfiltered images for final selection
-5. Click "✕ Clear" when done to see all images again
+4. Click 😑 button to show only closed-eye images
+5. Review and tag additional images
+6. Click "✕ Clear" when done to see all images again
 - **EXIF data displayed**: ISO, shutter speed, aperture, focal length, exposure compensation
 - **Brightness control**: Perfect for checking shadow detail and highlight clipping
 - Inspect fine details to choose between similar shots
@@ -248,6 +285,9 @@ Opens `http://localhost:5000` in your browser automatically.
 - numpy (array operations)
 - tqdm (progress bars)
 - flask (web server for web viewer)
+- sentence-transformers (CLIP model for eye detection - optional, only with --detect-eyes)
+- opencv-python (Face detection - optional, for eye detection)
+- face-recognition (Fallback face detection - optional, requires dlib)
 
 ## DINOv2 Models Explained
 
@@ -302,20 +342,87 @@ python fuji_similarity.py /path/to/photos --show-ungrouped
 python fuji_similarity.py /path/to/photos --web-viewer --show-ungrouped
 ```
 
+## Eye Detection Feature
+
+**What is eye detection?**
+- Automatically detects whether subjects in portraits have open or closed eyes
+- Uses CLIP AI model (sentence-transformers/clip-ViT-B-32) for semantic classification
+- Three-tier face detection for robustness and accuracy
+- Optional feature disabled by default (enable with `--detect-eyes`)
+
+**How does it work?**
+1. **Face Detection** (three-tier fallback):
+   - **Primary**: OpenCV DNN SSD face detector (fastest, requires model files)
+   - **Fallback**: face_recognition library (HOG-based, requires dlib)
+   - **Final fallback**: Full image CLIP encoding (when no face detected)
+2. **Eye Classification**: CLIP model compares image against text prompts:
+   - "A person with closed eyes"
+   - "A person with eyes wide open"
+   - "A face with eyelids completely covering the eyes"
+   - "Eyes that are shut"
+   - "A person blinking"
+3. **Scoring**: `(closed_score - open_score) > threshold` = closed eyes
+   - Default threshold: 0.02 (adjustable with `--eye-threshold`)
+   - Higher threshold = stricter detection
+4. **Results**: Status (open/closed/no_face), score, confidence, and detection method
+
+**Why use eye detection?**
+- **Save time**: Automatically identify closed-eye portraits before manual review
+- **Portrait workflow**: Filter out closed-eye shots in burst sequences
+- **Quality control**: Ensure final selections don't include closed eyes
+- **Batch processing**: Process hundreds of portraits efficiently
+
+**How to use:**
+```bash
+# Annotate images with eye detection (doesn't filter)
+python find-image-groups.py /path/to/photos --detect-eyes --web-viewer
+
+# Filter out closed-eye images from results
+python find-image-groups.py /path/to/photos --detect-eyes --filter-closed-eyes --web-viewer
+
+# Custom threshold for stricter detection
+python find-image-groups.py /path/to/photos --detect-eyes --eye-threshold 0.03
+
+# Show statistics in console
+python find-image-groups.py /path/to/photos --detect-eyes --show-eye-stats
+```
+
+**Web viewer integration:**
+- **Eye badges on thumbnails**: 👁️ (open), 😑 (closed), ❓ (no face)
+- **Color-coded borders**: Green (open), Red (closed), Gray (no face)
+- **Filter button** (😑): Show only closed-eye images for review/tagging
+- **Works with color filters**: Combine eye filter with color tags
+- **EXIF panel**: Shows eye detection details (status, score, confidence, method)
+
+**Performance:**
+- GPU-accelerated CLIP inference when available
+- Results cached in v2.1 cache format alongside embeddings
+- Lazy loading: Models only loaded when `--detect-eyes` enabled
+- Separate progress bar for eye detection processing
+
+**Note on model files:**
+- OpenCV face detector requires `deploy.prototxt` and `.caffemodel` files
+- If missing, automatically falls back to `face_recognition` library
+- If `face_recognition` unavailable, uses full-image CLIP (still works!)
+- All dependencies optional except for core CLIP model
+
 ## Performance Features
 
 **Embedding Caching:**
 - First run: Computes DINOv2 embeddings for all image files
 - Subsequent runs: Loads embeddings from `.fuji_similarity_dinov2_cache.json`
+- Eye detection results cached alongside embeddings (cache v2.1 format)
+- Backward compatible: v2.0 caches (without eye detection) still work
 - Only reprocesses files that have changed (checks file size + modification time)
 - Instant re-runs with different thresholds or clustering modes
 - Cache auto-updates when files are added/changed
 
 **GPU Acceleration:**
 - Automatically uses CUDA (NVIDIA) or MPS (Apple Silicon) if available
-- Significantly faster than CPU-only processing
+- Significantly faster than CPU-only processing for both DINOv2 and CLIP models
 - Falls back to CPU if no GPU detected
 - Sequential processing optimized for GPU workloads
+- Lazy model loading: CLIP and face detection models only loaded when --detect-eyes enabled
 
 **Auto-open Browser:**
 - Web viewer automatically opens in your default browser
@@ -361,27 +468,35 @@ If brightness control doesn't work, try:
 **Technical Details:**
 - The tool uses half-size RAW processing and image resizing for speed while maintaining accuracy
 - DINOv2 embeddings capture semantic similarity, not just pixel-level similarity
-- Processing time depends on the number of files, image size, and GPU availability
+- Eye detection uses CLIP embeddings with semantic text prompts for classification
+- Processing time depends on the number of files, image size, GPU availability, and enabled features
 - Web viewer converts images to JPEG for browser display (max 1920px wide)
-- Cache file stores embeddings with file signatures for validation
+- Cache file (v2.1) stores embeddings and eye detection results with file signatures for validation
+- Separate progress bars for embedding computation and eye detection
 
 **Example Workflow:**
 ```bash
-# First run: Processes 100 image files (takes ~2-3 minutes with GPU)
-python find-image-groups.py /path/to/photos --web-viewer --direct-only
+# First run: Processes 100 image files with eye detection (takes ~3-4 minutes with GPU)
+python find-image-groups.py /path/to/photos --detect-eyes --web-viewer --direct-only
 
 # Browser opens automatically
 # Review groups, tag images with keyboard shortcuts (1-8)
+# Eye badges (👁️😑❓) visible on thumbnails
+# Click 😑 filter button to show only closed-eye images
 # Press TAB to focus next image, number key to tag, repeat!
 # Click any image to zoom and inspect details
 # Use mouse wheel to zoom in/out, click-drag to pan
+# Eye detection data shown in EXIF panel
 # Tag colors even while in zoom view
 
 # Second run with different threshold: Instant! (uses cache)
-python find-image-groups.py /path/to/photos --web-viewer --threshold 0.92
+python find-image-groups.py /path/to/photos --detect-eyes --web-viewer --threshold 0.92
 
 # Third run with different clustering mode: Also instant!
-python find-image-groups.py /path/to/photos --web-viewer
+python find-image-groups.py /path/to/photos --detect-eyes --web-viewer
+
+# Fourth run filtering out closed eyes: Instant!
+python find-image-groups.py /path/to/photos --detect-eyes --filter-closed-eyes --web-viewer
 
 # Import into Capture One with color tags preserved
 ```

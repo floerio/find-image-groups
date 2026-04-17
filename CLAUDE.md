@@ -52,10 +52,26 @@ With web viewer:
 python find-image-groups.py --web-viewer
 ```
 
+With eye detection (annotates but doesn't filter):
+```bash
+python find-image-groups.py --detect-eyes --web-viewer
+```
+
+With eye detection and filtering (removes closed-eye images):
+```bash
+python find-image-groups.py --detect-eyes --filter-closed-eyes --web-viewer
+```
+
+With custom eye detection threshold:
+```bash
+python find-image-groups.py --detect-eyes --eye-threshold 0.03 --show-eye-stats
+```
+
 ## Architecture
 
 **Core Components:**
 - `find-image-groups.py` - Main CLI and image processing logic
+- `eye_detector.py` - Eye detection module using CLIP model
 - `web_viewer.py` - Flask web server for hybrid viewer
 - `templates/viewer.html` - Web UI template
 - `static/js/viewer.js` - Client-side JavaScript for navigation
@@ -73,14 +89,29 @@ python find-image-groups.py --web-viewer
   - `print_results()` - Displays individual pairs (legacy mode with --no-cluster)
 - `main()` - CLI interface using argparse
 
+**Eye Detection Module (`eye_detector.py`):**
+- `EyeDetector` class handles eye detection using CLIP model
+  - `__init__()` - Initializes with threshold and device (GPU/CPU)
+  - `load_models()` - Lazy loads CLIP model and face detection models
+  - `detect_faces_opencv()` - Primary face detection using OpenCV DNN SSD
+  - `detect_faces_fallback()` - Fallback face detection using face_recognition library
+  - `crop_to_face()` - Three-tier face detection: OpenCV DNN → face_recognition → full image
+  - `detect_eyes()` - Main API that returns eye detection result dict
+- Returns dict with: `{'status': 'open|closed|no_face|error', 'score': float, 'confidence': float, 'method': str}`
+- Three-tier fallback ensures robust detection even with missing dependencies
+- Models loaded only when eye detection is enabled (lazy loading)
+
 **Web Viewer (`web_viewer.py`):**
 - `WebViewer` class provides Flask-based web server
   - `_setup_routes()` - Configures Flask API endpoints
-  - `/api/clusters` - Returns cluster metadata as JSON with current color tags
+  - `/api/clusters` - Returns cluster metadata as JSON with current color tags and eye detection data
   - `/api/colors` - Returns available Capture One color labels
   - `/api/color/<cluster_id>/<image_id>` - POST endpoint to set color tag
   - `/api/image/<cluster_id>/<image_id>` - Serves processed images as JPEG
   - `/api/exif/<cluster_id>/<image_id>` - Returns EXIF data for image
+  - `/api/eye-detection/<cluster_id>/<image_id>` - Returns eye detection data for image
+  - `/api/eye-stats` - Returns overall eye detection statistics
+  - `/api/config` - Returns configuration including eye_detection_enabled flag
   - `read_color_tag()` - Reads xmp:Label from XMP sidecar files
   - `write_color_tag()` - Updates or creates XMP sidecar with color tag
   - `get_exif_data()` - Extracts EXIF data from RAF files (ISO, shutter, aperture, focal length, etc.)
@@ -111,6 +142,12 @@ python find-image-groups.py --web-viewer
 - Color buttons show selected state with checkmark and green border
 - Focused image highlighted with green border
 - Keyboard shortcuts: 1-8 for colors, TAB for focus navigation, click for zoom
+- **Eye detection features**:
+  - `createEyeBadge()` - Renders eye status badge on thumbnails (👁️ open, 😑 closed, ❓ no face)
+  - `toggleClosedEyesFilter()` - Filters images showing only closed eyes when 😑 button active
+  - Eye detection data displayed in EXIF panel (status, score, confidence, detection method)
+  - Closed eyes filter (😑 icon) works with color filters in both Groups and Browse modes
+  - Eye status badges color-coded: green border (open), red border (closed), gray border (no face)
 
 **Similarity detection approach**:
 - Uses DINOv2 deep learning embeddings for semantic similarity
@@ -118,6 +155,19 @@ python find-image-groups.py --web-viewer
 - Higher similarity = more similar (threshold default: 0.85, range: 0.0-1.0)
 - Model options: dinov2-small, dinov2-base (default), dinov2-large, dinov2-giant
 - GPU-accelerated when CUDA or Apple Silicon MPS is available
+
+**Eye detection approach** (optional feature):
+- Uses CLIP model (sentence-transformers/clip-ViT-B-32) for semantic eye state classification
+- Text prompts: "A person with closed eyes", "A person with eyes wide open", etc.
+- Three-tier face detection for robustness:
+  1. **Primary**: OpenCV DNN SSD face detector (requires deploy.prototxt and .caffemodel files)
+  2. **Fallback**: face_recognition library (HOG-based, requires dlib)
+  3. **Final fallback**: Full image CLIP encoding (when face detection fails)
+- Classification: `(closed_score - open_score) > threshold` = closed eyes (default threshold: 0.02)
+- Results cached in v2.1 cache format alongside DINOv2 embeddings
+- Disabled by default, enabled via `--detect-eyes` flag
+- Optional filtering mode to exclude closed-eye images from results (`--filter-closed-eyes`)
+- GPU-accelerated CLIP inference when available
 
 **Clustering algorithms**:
 - **Transitive clustering** (default): Uses union-find algorithm. If A~B and B~C, all three are grouped together even if A and C aren't directly similar. Good for finding "families" of related images.
@@ -128,9 +178,13 @@ python find-image-groups.py --web-viewer
 - RAW files processed at half-size and resized (default 512px) for speed while maintaining similarity accuracy
 - Sequential processing for GPU optimization (parallel processing doesn't benefit GPU workloads)
 - Embedding caching system stores computed embeddings with file signatures
-- Cache validation checks file size and modification time
-- GPU acceleration significantly speeds up embedding generation
+  - Cache format v2.1: includes optional eye_detection field per image
+  - Backward compatible: v2.0 caches (without eye detection) are still valid
+  - Cache validation checks file size and modification time
+- GPU acceleration significantly speeds up embedding generation and CLIP inference
 - O(n²) comparison complexity - all pairs compared using vectorized cosine similarity
+- Separate progress bars for embedding computation and eye detection
+- Lazy model loading: CLIP and face detection models loaded only when `--detect-eyes` enabled
 - Progress bars via tqdm for user feedback on long operations
 
 **XMP Sidecar Integration**:
@@ -151,6 +205,10 @@ python find-image-groups.py --web-viewer
 - `--no-cache`: Disable embedding caching (forces recomputation)
 - `--no-parallel`: Disable parallel processing (already disabled by default for GPU optimization)
 - `--direct-only`: Use direct similarity clustering (no transitive grouping). Groups only contain images ALL directly similar to each other.
+- `-de` / `--detect-eyes`: Enable eye detection (detects open/closed eyes)
+- `--filter-closed-eyes`: Filter out images with closed eyes from results (requires --detect-eyes)
+- `--eye-threshold`: Eye detection threshold (default: 0.02). Higher = stricter closed-eye detection
+- `--show-eye-stats`: Show eye detection statistics in console output
 
 ## Dependencies
 
@@ -162,3 +220,6 @@ python find-image-groups.py --web-viewer
 - `numpy`: Array operations
 - `tqdm`: Progress bar display
 - `flask`: Web server for web viewer
+- `sentence-transformers`: CLIP model for eye detection (optional, only needed with --detect-eyes)
+- `opencv-python`: Face detection using OpenCV DNN (optional, for eye detection)
+- `face-recognition`: Fallback face detection library (optional, requires dlib)
