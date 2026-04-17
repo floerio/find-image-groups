@@ -20,9 +20,6 @@ from PIL import Image, ImageOps
 from io import BytesIO
 import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.gridspec import GridSpec
 from web_viewer import WebViewer
 import torch
 from transformers import AutoImageProcessor, AutoModel
@@ -638,237 +635,6 @@ class ImageSimilarityFinder:
             print()
 
 
-class ClusterViewer:
-    """Interactive viewer for browsing clustered similar images."""
-
-    def __init__(self, clusters: List[Dict], finder: ImageSimilarityFinder, show_ungrouped: bool = False):
-        """
-        Initialize the viewer.
-
-        Args:
-            clusters: List of cluster dictionaries
-            finder: ImageSimilarityFinder instance (for loading images)
-            show_ungrouped: Whether to show ungrouped images
-        """
-        self.clusters = clusters
-        self.finder = finder
-        self.show_ungrouped = show_ungrouped
-        self.ungrouped_images = []
-        if show_ungrouped:
-            self.ungrouped_images = finder.find_ungrouped_images(clusters)
-        self.current_cluster = 0
-        self.fig = None
-        self.loaded_images = {}  # Cache for loaded images
-
-    def load_image_cached(self, filepath: str) -> Image.Image:
-        """
-        Load an image with caching.
-
-        Args:
-            filepath: Path to the image file
-
-        Returns:
-            PIL Image object
-        """
-        if filepath not in self.loaded_images:
-            self.loaded_images[filepath] = self.finder.load_image_file(Path(filepath))
-        return self.loaded_images[filepath]
-
-    def show_cluster(self, cluster_idx: int) -> None:
-        """
-        Display a cluster of similar images.
-
-        Args:
-            cluster_idx: Index of the cluster to display
-        """
-        if not self.clusters:
-            print("No clusters to display")
-            return
-
-        # Handle ungrouped images as a special "cluster"
-        if self.show_ungrouped and cluster_idx >= len(self.clusters):
-            self.show_ungrouped_images()
-            return
-
-        # Wrap around
-        cluster_idx = cluster_idx % len(self.clusters)
-        self.current_cluster = cluster_idx
-
-        cluster = self.clusters[cluster_idx]
-        images = cluster['images']
-        pairs = cluster['pairs']
-
-        # Clear the figure
-        if self.fig is not None:
-            plt.clf()
-        else:
-            self.fig = plt.figure(figsize=(16, 10))
-
-        # Calculate grid layout
-        n_images = len(images)
-        n_cols = min(3, n_images)
-        n_rows = (n_images + n_cols - 1) // n_cols
-
-        # Set up the figure title
-        self.fig.suptitle(
-            f'Group {cluster_idx + 1} of {len(self.clusters)} - {n_images} similar images\n'
-            f'Use ← → to navigate groups, Q to quit',
-            fontsize=14,
-            fontweight='bold'
-        )
-
-        # Create subplots for images
-        for idx, img_path in enumerate(images):
-            ax = self.fig.add_subplot(n_rows, n_cols, idx + 1)
-
-            try:
-                # Load image
-                img = self.load_image_cached(img_path)
-
-                # Display image
-                ax.imshow(np.array(img))
-                ax.axis('off')
-
-                # Add filename as title
-                filename = Path(img_path).name
-                ax.set_title(filename, fontsize=10, pad=5)
-
-            except Exception as e:
-                ax.text(0.5, 0.5, f'Error loading\n{Path(img_path).name}',
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.axis('off')
-
-        # Add similarity information at the bottom
-        similarity_text = "Similarities:\n"
-        for path1, path2, similarity in pairs:
-            similarity_pct = similarity * 100
-            name1 = Path(path1).name
-            name2 = Path(path2).name
-            similarity_text += f"  {name1} ↔ {name2}: {similarity_pct:.1f}%\n"
-
-        # Add text box with similarity info
-        self.fig.text(0.02, 0.02, similarity_text, fontsize=9,
-                     verticalalignment='bottom', fontfamily='monospace',
-                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
-        plt.draw()
-
-    def show_ungrouped_images(self) -> None:
-        """Display ungrouped images."""
-        if not self.ungrouped_images:
-            print("No ungrouped images to display")
-            return
-
-        # Clear the figure
-        if self.fig is not None:
-            plt.clf()
-        else:
-            self.fig = plt.figure(figsize=(16, 10))
-
-        images = self.ungrouped_images
-        n_images = len(images)
-        n_cols = min(3, n_images)
-        n_rows = (n_images + n_cols - 1) // n_cols
-
-        # Set up the figure title
-        self.fig.suptitle(
-            f'Ungrouped Images - {n_images} images not in any similar group\n'
-            f'Use ← → to navigate, Q to quit',
-            fontsize=14,
-            fontweight='bold'
-        )
-
-        # Create subplots for images
-        for idx, img_path in enumerate(images):
-            ax = self.fig.add_subplot(n_rows, n_cols, idx + 1)
-
-            try:
-                # Load image
-                img = self.load_image_cached(img_path)
-
-                # Display image
-                ax.imshow(np.array(img))
-                ax.axis('off')
-
-                # Add filename as title
-                filename = Path(img_path).name
-                ax.set_title(filename, fontsize=10, pad=5)
-
-            except Exception as e:
-                ax.text(0.5, 0.5, f'Error loading\n{Path(img_path).name}',
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.axis('off')
-
-        # Add info text at the bottom
-        info_text = "These images have no similar counterparts based on the current threshold."
-        self.fig.text(0.02, 0.02, info_text, fontsize=9,
-                     verticalalignment='bottom', fontfamily='monospace',
-                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
-        plt.draw()
-
-    def on_key(self, event) -> None:
-        """
-        Handle keyboard events for navigation.
-
-        Args:
-            event: Matplotlib key event
-        """
-        if event.key == 'right' or event.key == 'n':
-            # Next cluster
-            total_groups = self.get_total_groups()
-            next_cluster = self.current_cluster + 1
-            if next_cluster >= total_groups:
-                next_cluster = 0
-            self.show_cluster(next_cluster)
-        elif event.key == 'left' or event.key == 'p':
-            # Previous cluster
-            total_groups = self.get_total_groups()
-            prev_cluster = self.current_cluster - 1
-            if prev_cluster < 0:
-                prev_cluster = total_groups - 1
-            self.show_cluster(prev_cluster)
-        elif event.key == 'q' or event.key == 'escape':
-            # Quit
-            plt.close(self.fig)
-
-    def run(self) -> None:
-        """Start the interactive viewer."""
-        if not self.clusters:
-            print("\nNo similar images to display.")
-            return
-
-        print("\n" + "="*80)
-        print("INTERACTIVE VIEWER")
-        print("="*80)
-        print("Controls:")
-        print("  → or N : Next group")
-        print("  ← or P : Previous group")
-        print("  Q or ESC : Quit viewer")
-        print("="*80 + "\n")
-
-        # Show first cluster
-        self.show_cluster(0)
-
-        # Connect keyboard handler
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
-
-        # Show the plot
-        plt.show()
-
-        # Clear cache after viewer closes
-        self.loaded_images.clear()
-
-    def get_total_groups(self) -> int:
-        """Get total number of groups including ungrouped images."""
-        total = len(self.clusters)
-        if self.show_ungrouped and self.ungrouped_images:
-            total += 1
-        return total
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Find similar images in a collection of RAW and standard image files",
@@ -920,12 +686,6 @@ Supported formats:
         "--no-cluster",
         action="store_true",
         help="Disable clustering and show individual pairs instead"
-    )
-
-    parser.add_argument(
-        "-v", "--viewer",
-        action="store_true",
-        help="Launch interactive matplotlib viewer to browse similar image groups"
     )
 
     parser.add_argument(
@@ -1022,13 +782,10 @@ Supported formats:
                 print("No ungrouped images found (all images are in similar groups)")
                 print(f"{'='*80}")
 
-        # Launch viewer if requested
+        # Launch web viewer if requested
         if args.web_viewer and clusters:
             web_viewer = WebViewer(clusters, finder, port=args.port, show_ungrouped=args.show_ungrouped)
             web_viewer.run()
-        elif args.viewer and clusters:
-            viewer = ClusterViewer(clusters, finder, show_ungrouped=args.show_ungrouped)
-            viewer.run()
 
 
 if __name__ == "__main__":

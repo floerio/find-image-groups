@@ -47,14 +47,9 @@ With custom parameters:
 python find-image-groups.py /path/to/photos --threshold 0.90 --max-size 768
 ```
 
-With web viewer (recommended):
+With web viewer:
 ```bash
 python find-image-groups.py --web-viewer
-```
-
-With matplotlib viewer (offline):
-```bash
-python find-image-groups.py --viewer
 ```
 
 ## Architecture
@@ -76,11 +71,6 @@ python find-image-groups.py --viewer
   - `cluster_similar_images_direct()` - Direct similarity clustering (no transitive grouping)
   - `print_clustered_results()` - Displays grouped results (default)
   - `print_results()` - Displays individual pairs (legacy mode with --no-cluster)
-- `ClusterViewer` class provides interactive matplotlib-based viewer
-  - `load_image_cached()` - Caches loaded images to avoid reprocessing
-  - `show_cluster()` - Displays a cluster in a grid layout with similarity info
-  - `on_key()` - Handles keyboard navigation (arrow keys, Q to quit)
-  - `run()` - Main viewer loop with matplotlib event handling
 - `main()` - CLI interface using argparse
 
 **Web Viewer (`web_viewer.py`):**
@@ -156,8 +146,7 @@ python find-image-groups.py --viewer
 - `--max-size`: Maximum image size for DINOv2 processing. Smaller = faster. Default: 512
 - `--model`: DINOv2 model variant (facebook/dinov2-small, facebook/dinov2-base, facebook/dinov2-large, facebook/dinov2-giant). Default: facebook/dinov2-base
 - `--no-cluster`: Disable clustering, show individual pairs instead (legacy mode)
-- `--web-viewer`: Launch web-based viewer (recommended)
-- `--viewer`: Launch matplotlib viewer (offline alternative)
+- `--web-viewer`: Launch web-based viewer
 - `--port`: Port for web server. Default: 5000
 - `--no-cache`: Disable embedding caching (forces recomputation)
 - `--no-parallel`: Disable parallel processing (already disabled by default for GPU optimization)
@@ -172,5 +161,4 @@ python find-image-groups.py --viewer
 - `Pillow`: Image manipulation after RAW processing
 - `numpy`: Array operations
 - `tqdm`: Progress bar display
-- `flask`: Web server for hybrid viewer
-- `matplotlib`: Offline matplotlib viewer
+- `flask`: Web server for web viewer

@@ -11,7 +11,6 @@ A Python tool to find and organize similar images using DINOv2 deep learning emb
 - **Two clustering modes**: Transitive (loose) or Direct-only (tight)
 - **Hybrid architecture: Python backend + Web frontend**
 - **Interactive web-based viewer with smooth navigation**
-- Alternative matplotlib viewer for offline use
 - Adjustable similarity threshold
 - Progress bars for large collections
 - Clear output showing similarity percentages and groupings
@@ -64,19 +63,12 @@ Show individual pairs instead of clusters:
 python find-image-groups.py /path/to/photos --no-cluster
 ```
 
-**Launch web-based viewer (recommended):**
+**Launch web-based viewer:**
 ```bash
 python find-image-groups.py /path/to/photos --web-viewer
 ```
 
-This starts a local web server and opens a browser interface. Better performance and smoother UI than the matplotlib viewer.
-
-**Launch matplotlib viewer (offline):**
-```bash
-python find-image-groups.py /path/to/photos --viewer
-```
-
-Both viewers display images in each group side-by-side and support keyboard navigation.
+This starts a local web server and opens a browser interface with smooth navigation, color tagging, and EXIF data display.
 
 ### Options
 
@@ -86,8 +78,7 @@ Both viewers display images in each group side-by-side and support keyboard navi
 - `--model` - DINOv2 model variant (dinov2-small/base/large/giant, default: base).
 - `--no-cluster` - Disable clustering and show individual pairs instead of grouped results.
 - `-do, --direct-only` - Use direct similarity clustering (tighter groups, no transitive).
-- `-w, --web-viewer` - Launch web-based viewer (recommended - better UI and performance).
-- `-v, --viewer` - Launch matplotlib viewer (alternative, works offline).
+- `-w, --web-viewer` - Launch web-based viewer.
 - `-p, --port` - Port for web viewer (default: 5020).
 - `--no-cache` - Disable embedding caching (recompute all embeddings).
 - `--no-parallel` - Disable parallel processing (already disabled by default for GPU).
@@ -245,25 +236,6 @@ python fuji_similarity.py /path/to/photos --web-viewer --show-ungrouped
 
 Opens `http://localhost:5000` in your browser automatically.
 
-### Matplotlib Viewer (Offline Alternative)
-
-A desktop viewer using matplotlib. Works without internet/browser but with simpler UI.
-
-**Controls:**
-- `→` or `N` - Next group (cycles through all groups including ungrouped)
-- `←` or `P` - Previous group (cycles through all groups including ungrouped)
-- `Q` or `ESC` - Quit
-
-**Usage:**
-```bash
-python fuji_similarity.py /path/to/photos --viewer
-```
-
-**With ungrouped images:**
-```bash
-python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
-```
-
 ## Requirements
 
 - Python 3.8+
@@ -275,8 +247,7 @@ python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
 - scikit-learn (cosine similarity computation)
 - numpy (array operations)
 - tqdm (progress bars)
-- flask (web server for hybrid viewer)
-- matplotlib (offline matplotlib viewer)
+- flask (web server for web viewer)
 
 ## DINOv2 Models Explained
 
@@ -329,9 +300,6 @@ python fuji_similarity.py /path/to/photos --show-ungrouped
 
 # Web viewer with ungrouped images
 python fuji_similarity.py /path/to/photos --web-viewer --show-ungrouped
-
-# Matplotlib viewer with ungrouped images  
-python fuji_similarity.py /path/to/photos --viewer --show-ungrouped
 ```
 
 ## Performance Features
