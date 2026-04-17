@@ -206,7 +206,7 @@ class ImageSimilarityFinder:
         if not self.use_cache:
             return {}
 
-        self.cache_file = directory / '.fuji_similarity_dinov2_cache.json'
+        self.cache_file = directory / '.find-image-groups_cache.json'
 
         if not self.cache_file.exists():
             return {}
